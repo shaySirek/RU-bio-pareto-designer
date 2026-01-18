@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "pareto-designer"
+version = "0.1.0"
+description = "Multi Objective DNA Sequence Pareto Designer"
+authors = ["Shay Sirek <shaysirek@gmail.com>"]
+packages = [{include = "pareto_designer"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+biopython = "^1.86"
+pyjaspar = "^4.0.0"
+numpy = "^2.4.1"
+pandas = "^2.3.3"
+scikit-learn = "^1.8.0"
+scipy = "^1.17.0"
+matplotlib = "^3.10.8"
+kmeans1d = "^0.4.0"
+loguru = "^0.7.3"
+requests = "^2.32.5"
+pyyaml = "^6.0.3"
+
+[tool.poetry.scripts]
+# Main Programs
+design-seq = "pareto_designer.programs.seq_design:main"
+score-binding = "pareto_designer.programs.binding_scorer:main"
+
+# FSM Reduction Experiments
+fsm-colored-exp = "pareto_designer.programs.fsm_reduction_experiments.colored_fsm_reduction_exp:main"
+fsm-detailed = "pareto_designer.programs.fsm_reduction_experiments.detailed_fsm_reduction:main"
+fsm-hierarchical = "pareto_designer.programs.fsm_reduction_experiments.hierarchical_coloring_fsm_reduction:main"
+fsm-stranded-exp = "pareto_designer.programs.fsm_reduction_experiments.stranded_fsm_reduction_exp:main"
+
+# Gene Utilities
+gene-fetch = "pareto_designer.programs.genes.fetch_gene_with_hits:main"
+gene-scan = "pareto_designer.programs.genes.scan_genes_motif_hits:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
