@@ -68,7 +68,7 @@ class DB_FSM_Reducer(Generic[T_STATE, T_CHAR]):
             fsm_builder.get_current()
         )
 
-        logger.info("Starting process of state reduction ...")
+        logger.info("Starting process of state reduction...")
         while not self._merge_list.is_empty():
             logger.debug(f"Starting iteration {reduced_fsm_idx}")
             run_validation = (
@@ -131,7 +131,7 @@ class DB_FSM_Reducer(Generic[T_STATE, T_CHAR]):
         return self._sse / self._n_origin
 
     def _init_ds_and_sorted_list(self):
-        logger.info("Initializing DS and mergeList from the DB FSM ...")
+        logger.debug("Initializing DS and mergeList from the DB FSM...")
         m = len(list(self.origin_fsm.V)[0])
         for v in self.origin_fsm.V:
             self._ds.add(v)
@@ -141,7 +141,7 @@ class DB_FSM_Reducer(Generic[T_STATE, T_CHAR]):
             )
             self._add_mergeable_set(mergeable_set)
         logger.debug(f"|mergeList|={len(self._merge_list)}")
-        logger.info("Finished initialization")
+        logger.debug("Finished initialization")
 
     def _add_mergeable_set(self, mergeable_set: set[T_STATE]):
         logger.debug(f"add_mergeable_set({mergeable_set})")

@@ -1,11 +1,10 @@
-from loguru import logger
 from pathlib import Path
 
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
 from pareto_designer.shared.func_cost.bio_function import BioCostFunction
 from pareto_designer.shared.parsing import read_sequence, read_codon_usage
-from pareto_designer.shared.cds_util import get_coding_positions, START_CODON_MARKER
+from pareto_designer.shared.cds_util import get_coding_positions
 
 
 class ScoreFunctionBuilder:
@@ -20,8 +19,6 @@ class ScoreFunctionBuilder:
 
     def with_target_sequence(self, seq_file: Path) -> "ScoreFunctionBuilder":
         self._target_sequence = read_sequence(seq_file)
-        length = len(self._target_sequence.replace(START_CODON_MARKER, ""))
-        logger.info(f"Read sequence of length {length} ({str(seq_file)})")
         return self
 
     def with_slice(self, start: int, end: int) -> "ScoreFunctionBuilder":

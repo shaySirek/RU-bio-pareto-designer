@@ -41,7 +41,6 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
         )
 
     def find_irreducible_fsm(self):
-        logger.info("Staring find_irreducible_fsm ...")
         self._q = Queue()
         self._ds: UnionFind = UnionFind[T_STATE]()
 
@@ -50,7 +49,7 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
             self._ds, self.origin_fsm, self._add_mergeable_set
         )
 
-        logger.info("Starting main loop of reduction ...")
+        logger.info("Starting process of state reduction...")
         while not self._q.empty():
             x = self._q.get(block=False)
             v, mergeable_set = self._ds.get(x)
@@ -75,7 +74,7 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
         return self._reduced_fsm
 
     def _init_ds_and_q(self):
-        logger.info("Initializing DS and Q from the DB FSM ...")
+        logger.info("Initializing DS and Q from the DB FSM...")
         candidates: dict[T_COLOR, set[T_STATE]] = {}
         m = len(list(self.origin_fsm.V)[0])
 
@@ -115,7 +114,7 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
         logger.debug("Finished building mapping function (f)")
 
         logger.debug(
-            "Validating representation of all states in the origin FSM by states in the reduced FSM ..."
+            "Validating representation of all states in the origin FSM by states in the reduced FSM..."
         )
         assert len(self._reduced_fsm.V) == n_states_irreducible_fsm
         assert len(self.origin_fsm.V) == len(self._f)
@@ -144,7 +143,7 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
 
         # validate equivalence by comparing pairs of state paths of random sequences
         # the comparison is done by the mapping function (self._f)
-        logger.debug("Validating equivalence of the origin FSM and the reduced FSM ...")
+        logger.debug("Validating equivalence of the origin FSM and the reduced FSM...")
         for v in self.origin_fsm.V:
             v_in_reduced = self._f[v]
             assert self.origin_fsm.c(v) == self._reduced_fsm.c(v_in_reduced)
@@ -154,7 +153,7 @@ class Colored_DB_FSM_Reducer(Generic[T_STATE, T_CHAR, T_COLOR]):
                 assert self._f[out_in_origin] == out_in_reduced
         logger.debug("Equivalence\t:\tOK")
 
-        logger.debug("Validating irreducibility of the reduced FSM ...")
+        logger.debug("Validating irreducibility of the reduced FSM...")
         eq_classes_per_color: dict[T_COLOR, set[tuple[T_STATE, ...]]] = {
             col: set() for col in self._reduced_fsm.C
         }

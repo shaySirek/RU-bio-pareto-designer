@@ -31,13 +31,18 @@ def get_coding_positions(sequence: str) -> tuple[str, list[int]]:
         )
 
     n = len(sequence)
+    logger.info(f"Processing sequence of length {n}")
+
     codon_positions: list[int] = [0] * n
     codon_positions[start_codon_index : start_codon_index + 3] = [1, 2, -3]
 
     for i in range(start_codon_index + 3, n - 2, 3):
         codon_positions[i : i + 3] = [1, 2, 3]
-        if sequence[i : i + 3] in STOP_CODONS:
-            logger.info(f"ORF found in positions {start_codon_index + 1}-{i + 3}")
+        codon = sequence[i : i + 3]
+        if codon in STOP_CODONS:
+            logger.info(
+                f"Found ORF in positions {start_codon_index + 1}-{i + 3} (stop codon: {codon})"
+            )
             return sequence, codon_positions
 
     raise ValueError(
