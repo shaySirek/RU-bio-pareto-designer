@@ -18,12 +18,13 @@ class SequenceDesigner:
     def __init__(self):
         self._sequence_length: int = None
         self._score_function: ScoreFunction = None
+        self._motif_id: str = None
         self._motif: BindingMotif = None
-        self._db_fsm: FSM = None
+        self._fsm: FSM = None
         self._binding_score_map: dict[str, float] = None
         self._motif_length: int = None
         self._alphabet: list[str] = None
-        self._reduced: tuple[FSM, dict[str, float], float] = None
+        self._fsm_id: str = None
 
     def with_score_function(self, score_function: ScoreFunction) -> "SequenceDesigner":
         self._sequence_length = len(score_function.target_sequence)
@@ -31,11 +32,13 @@ class SequenceDesigner:
         return self
 
     def with_binding_motif(self, matrix_id: str) -> "SequenceDesigner":
-        self._motif, self._db_fsm, self._binding_score_map = get_binding_motif_fsm(
+        self._motif_id = matrix_id
+        self._motif, self._fsm, self._binding_score_map = get_binding_motif_fsm(
             matrix_id
         )
         self._motif_length = self._motif.length
         self._alphabet = self._motif.alphabet
+        self._fsm_id = "db_fsm"
         return self
 
     def with_reduced_fsm(
@@ -47,22 +50,25 @@ class SequenceDesigner:
             raise ValueError("Cannot reduce FSM: motif is not set.")
 
         fsm_reducer = DB_FSM_Reducer[str, str](
-            self._db_fsm, self._binding_score_map, self._motif.matrix_id
+            self._fsm, self._binding_score_map, self._motif_id
         )
-        self._reduced = next(
+        self._fsm, self._binding_score_map, mse = next(
             get_reduced_fsms(
                 fsm_reducer,
                 delta_mse_threshold=delta_mse_threshold,
                 reduction_ratio_threshold=reduction_ratio_threshold,
             )
         )
+        n_states = len(self._fsm.V)
+        self._fsm_id = f"reduced_fsm_{n_states}"
+        logger.info(f"Reduced DB FSM to FSM with {n_states} states and MSE={mse:.3f}")
         return self
 
     def _validate(self):
         required_fields = [
             "_sequence_length",
             "_score_function",
-            "_db_fsm",
+            "_fsm",
             "_binding_score_map",
             "_motif_length",
         ]
@@ -73,33 +79,13 @@ class SequenceDesigner:
 
     def run(self, seq_id: str):
         self._validate()
-        self._output_path = (
-            Path("designer_results") / self._motif.matrix_id / seq_id / "runs"
-        )
+        output_path = Path("designer_results") / self._motif_id / self._fsm_id / seq_id
 
-        if self._reduced is None:
-            logger.info(
-                f"Using the DB FSM ({len(self._db_fsm.V)} states) to find Pareto-optimal sequences"
-            )
-            self._run_designer(self._db_fsm, self._binding_score_map, "db_fsm")
-        else:
-            fsm, binding_score_map, mse = self._reduced
-            logger.info(
-                f"Using a reduced FSM with {len(fsm.V)} states and MSE={mse:.3f} to find Pareto-optimal sequences"
-            )
-            self._run_designer(fsm, binding_score_map, f"reduced_fsm_{len(fsm.V)}")
-
-    def _run_designer(
-        self,
-        fsm: FSM,
-        binding_score_map: dict[str, float],
-        subdir: str,
-    ):
         designer = ParetoOptimalDesign[str, str](
             self._sequence_length,
             self._score_function,
-            fsm,
-            binding_score_map,
+            self._fsm,
+            self._binding_score_map,
             self._motif_length,
         )
         po_set, duration = run_with_timing(designer.find_pareto_optimal)
@@ -107,4 +93,4 @@ class SequenceDesigner:
             f"Found {len(po_set)} Pareto-optimal sequences in {format_duration(int(duration))}"
         )
 
-        export_solutions(po_set, self._score_function, self._output_path / subdir)
+        export_solutions(po_set, self._score_function, self._motif_id, output_path)

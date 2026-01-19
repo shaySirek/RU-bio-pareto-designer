@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pareto Front Analysis</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: #f4f4f9; }
+        .container { max-width: 1100px; margin: auto; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        
+        /* Inputs Section Styles */
+        .input-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; align-items: start; }
+        .input-item label { display: block; font-weight: bold; margin-bottom: 8px; color: #555; }
+        .target-box { 
+            background: #272822; color: #f8f8f2; padding: 10px; border-radius: 4px; 
+            font-family: monospace; font-size: 0.9em; max-height: 80px; 
+            overflow-y: auto; word-break: break-all; border: 1px solid #333;
+        }
+        .jaspar-link { 
+            display: inline-block; padding: 5px 12px; background: #004481; color: white; 
+            text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 0.9em;
+        }
+        .jaspar-link:hover { background: #0056a3; }
+
+        /* Plot & List Styles */
+        .plot-container { text-align: center; }
+        .dot { fill: crimson; opacity: 0.6; cursor: pointer; transition: opacity 0.2s; }
+        .dot:hover { opacity: 1; stroke: black; stroke-width: 2; }
+        .axis { stroke: #333; stroke-width: 2; }
+        .axis-label { font-size: 14px; font-weight: bold; fill: #333; }
+        
+        .list-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #eee; position: sticky; top: 0; padding: 12px; text-align: left; z-index: 10; }
+        td { padding: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        tr:hover { background: #fff5f5; }
+        
+        .link-main { color: crimson; text-decoration: none; font-weight: bold; margin-right: 15px; }
+        .link-dl { 
+            color: #666; text-decoration: none; font-size: 0.85em; 
+            background: #f0f0f0; padding: 3px 8px; border-radius: 3px; border: 1px solid #ccc;
+            margin-right: 5px;
+        }
+        .link-dl:hover { background: #e0e0e0; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>Optimization Inputs</h2>
+            <div class="input-grid">
+                <div class="input-item">
+                    <label>Binding Motif</label>
+                    <a href="https://jaspar.elixir.no/matrix/{{ motif_id }}/" target="_blank" class="jaspar-link">
+                        {{ motif_id }} ↗
+                    </a>
+                </div>
+                <div class="input-item">
+                    <label>Target Sequence</label>
+                    <div class="target-box">{{ results[0].target_sequence }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card plot-container">
+            <h2>Pareto Front</h2>
+            {% set width, height = 800, 450 %}
+            {% set padding_left, padding_bottom = 80, 60 %}
+            {% set padding_top, padding_right = 40, 40 %}
+
+            {% set min_x = results | map(attribute='cost') | min %}
+            {% set max_x = results | map(attribute='cost') | max %}
+            {% set min_y = results | map(attribute='score') | min %}
+            {% set max_y = results | map(attribute='score') | max %}
+            
+            <svg width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
+                <text x="{{ (width + padding_left - padding_right) / 2 }}" y="{{ height - 10 }}" text-anchor="middle" class="axis-label">Functional Cost</text>
+                <text x="25" y="{{ (height + padding_top - padding_bottom) / 2 }}" text-anchor="middle" class="axis-label" transform="rotate(-90, 25, {{ (height + padding_top - padding_bottom) / 2 }})">Binding Score</text>
+
+                <line x1="{{ padding_left }}" y1="{{ height - padding_bottom }}" x2="{{ width - padding_right }}" y2="{{ height - padding_bottom }}" class="axis" />
+                <line x1="{{ padding_left }}" y1="{{ padding_top }}" x2="{{ padding_left }}" y2="{{ height - padding_bottom }}" class="axis" />
+                
+                {% for r in results %}
+                    {% set cx = padding_left + (r.cost - min_x) / (max_x - min_x + 0.0001) * (width - padding_left - padding_right) %}
+                    {% set cy = (height - padding_bottom) - (r.score - min_y) / (max_y - min_y + 0.0001) * (height - padding_bottom - padding_top) %}
+                    <a href="{{ r.url }}">
+                        <circle cx="{{ cx }}" cy="{{ cy }}" r="7" class="dot">
+                            <title>ID: {{ r.id }}&#10;Cost: {{ r.cost | round(4) }}&#10;Score: {{ r.score | round(4) }}</title>
+                        </circle>
+                    </a>
+                {% endfor %}
+            </svg>
+        </div>
+
+        <div class="card">
+            <h2>Solutions List</h2>
+            <div class="list-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Functional Cost</th>
+                            <th>Binding Score</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in results | sort(attribute='cost') %}
+                        <tr>
+                            <td><strong>{{ r.id }}</strong></td>
+                            <td>{{ "%.4f"|format(r.cost) }}</td>
+                            <td>{{ "%.4f"|format(r.score) }}</td>
+                            <td>
+                                <a href="{{ r.url }}" class="link-main">View Report</a>
+                                <a href="{{ r.id }}_sequence.fa" download class="link-dl">FASTA</a>
+                                <a href="{{ r.id }}_sequence.txt" download class="link-dl">TXT</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

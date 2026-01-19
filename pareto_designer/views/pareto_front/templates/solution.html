@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solution {{ res.id }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 40px; color: #333; line-height: 1.6; }
+        .container { max-width: 900px; margin: auto; }
+        .header-box { 
+            background: #f8f9fa; border-left: 5px solid crimson; padding: 20px; 
+            border-radius: 4px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start;
+        }
+        .metrics { flex-grow: 1; }
+        .downloads { display: flex; flex-direction: column; gap: 8px; text-align: right; }
+        
+        .btn-download {
+            display: inline-block; padding: 6px 12px; background: #eee; color: #333;
+            text-decoration: none; border-radius: 4px; font-size: 0.85em; font-weight: bold;
+            transition: background 0.2s; border: 1px solid #ccc;
+        }
+        .btn-download:hover { background: #ddd; border-color: #bbb; }
+
+        .seq-box { 
+            background: #272822; color: #a6e22e; padding: 20px; border-radius: 5px; 
+            word-break: break-all; font-family: 'Courier New', monospace; 
+            line-height: 2; letter-spacing: 2px; margin-bottom: 20px;
+        }
+        .subst { 
+            color: #f92672; font-weight: bold; background: #49483e; 
+            padding: 2px 1px; border-radius: 2px; text-decoration: underline;
+        }
+        
+        .table-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; position: relative; }
+        th { background-color: #f2f2f2; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        .subst-text { font-family: monospace; font-weight: bold; }
+        .arrow { color: #999; padding: 0 5px; }
+        .mod-base { color: #f92672; }
+        
+        .back-link { display: inline-block; margin-top: 30px; color: crimson; text-decoration: none; font-weight: bold; }
+        .legend { font-size: 0.9em; color: #666; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Solution {{ res.id }}</h1>
+        <div class="header-box">
+            <div class="metrics">
+                <div><strong>Functional Cost:</strong> {{ "%.6f"|format(res.cost) }}</div>
+                <div><strong>Binding Score:</strong> {{ "%.6f"|format(res.score) }}</div>
+            </div>
+            <div class="downloads">
+                <strong>Export Files:</strong>
+                <a href="{{ res.id }}_sequence.fa" download class="btn-download">Download .FASTA</a>
+                <a href="{{ res.id }}_sequence.txt" download class="btn-download">Download .TXT</a>
+            </div>
+        </div>
+        
+        <h3>Sequence Alignment</h3>
+        <div class="legend">Showing Target Sequence with <span style="color: #f92672; font-weight: bold;">Substitutions</span> highlighted:</div>
+        <div class="seq-box">
+            {% for t_char in res.target_sequence %}
+                {% set m_char = res.sequence[loop.index0] %}
+                {% if t_char != m_char %}
+                    <span class="subst" title="Target: {{ t_char }}">{{ m_char }}</span>
+                {% else %}
+                    {{ t_char }}
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <h3>Substitution Details</h3>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Position</th>
+                        <th>Substitution</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pos, cost in cost_data %}
+                    <tr>
+                        <td>{{ pos }}</td>
+                        <td class="subst-text">
+                            {{ res.target_sequence[pos] }} 
+                            <span class="arrow">&rarr;</span> 
+                            <span class="mod-base">{{ res.sequence[pos] }}</span>
+                        </td>
+                        <td>{{ "%.4f"|format(cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="pareto_front.html" class="back-link">&larr; Return to Pareto Front</a>
+    </div>
+</body>
+</html>
