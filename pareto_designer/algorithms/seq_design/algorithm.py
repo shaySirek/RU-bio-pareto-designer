@@ -87,6 +87,8 @@ class ParetoOptimalDesign(Generic[T_STATE, T_CHAR]):
         b_0 = self.binding_score_map[v]
         for u, sigma in self.fsm.pred(v):
             f_0 = self.score_function(i - 1, u, sigma)
+            if f_0 == -float("inf"):
+                continue
             dp_cell = self._dp_matrix.get(u)
             if len(dp_cell) == 0:
                 continue
