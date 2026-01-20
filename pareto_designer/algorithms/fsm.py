@@ -1,7 +1,6 @@
 from typing import TypeVar, Hashable, Generic, Iterable
 from itertools import product
 
-
 T_STATE = TypeVar("V", bound=Hashable)
 T_CHAR = TypeVar("S", bound=Hashable)
 T_TRANS = tuple[T_STATE, T_CHAR]

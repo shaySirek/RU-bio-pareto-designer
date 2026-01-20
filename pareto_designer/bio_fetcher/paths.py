@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 BASE_DIR = Path("bio_data")
 MOTIF_DIR = BASE_DIR / "motifs"
 SEQ_DIR = BASE_DIR / "sequences"
