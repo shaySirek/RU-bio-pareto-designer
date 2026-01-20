@@ -25,6 +25,7 @@ class SequenceDesigner:
         self._motif_length: int = None
         self._alphabet: list[str] = None
         self._fsm_id: str = None
+        self._limit_solutions: int = None
 
     def with_score_function(self, score_function: ScoreFunction) -> "SequenceDesigner":
         self._sequence_length = len(score_function.target_sequence)
@@ -44,7 +45,7 @@ class SequenceDesigner:
     def with_reduced_fsm(
         self,
         delta_mse_threshold: float = 0.5,
-        reduction_ratio_threshold: float = 0.875,
+        reduction_ratio_threshold: float = 0.5,
     ) -> "SequenceDesigner":
         if self._motif is None:
             raise ValueError("Cannot reduce FSM: motif is not set.")
@@ -55,13 +56,17 @@ class SequenceDesigner:
         self._fsm, self._binding_score_map, mse = next(
             get_reduced_fsms(
                 fsm_reducer,
-                delta_mse_threshold=delta_mse_threshold,
-                reduction_ratio_threshold=reduction_ratio_threshold,
+                delta_mse_threshold,
+                reduction_ratio_threshold,
             )
         )
         n_states = len(self._fsm.V)
         self._fsm_id = f"reduced_fsm_{n_states}"
         logger.info(f"Reduced DB FSM to FSM with {n_states} states and MSE={mse:.3f}")
+        return self
+
+    def with_limit_solutions(self, limit_solutions: int) -> "SequenceDesigner":
+        self._limit_solutions = limit_solutions
         return self
 
     def _validate(self):
@@ -71,6 +76,7 @@ class SequenceDesigner:
             "_fsm",
             "_binding_score_map",
             "_motif_length",
+            "_limit_solutions",
         ]
         missing = [f for f in required_fields if getattr(self, f) is None]
         if missing:
@@ -79,7 +85,13 @@ class SequenceDesigner:
 
     def run(self, seq_id: str):
         self._validate()
-        output_path = Path("designer_results") / self._motif_id / self._fsm_id / seq_id
+        output_path = (
+            Path("designer_results")
+            / seq_id
+            / self._motif_id
+            / self._fsm_id
+            / f"limit_solutions_{self._limit_solutions}"
+        )
 
         designer = ParetoOptimalDesign[str, str](
             self._sequence_length,
@@ -87,6 +99,12 @@ class SequenceDesigner:
             self._fsm,
             self._binding_score_map,
             self._motif_length,
+            self._limit_solutions,
+        )
+        logger.info(
+            f"Running algorithm on target sequence {seq_id}"
+            f" and binding motif of {self._motif_id}"
+            f" [n={self._sequence_length}, |V|={len(self._fsm.V)}, L={self._limit_solutions}]..."
         )
         po_set, duration = run_with_timing(designer.find_pareto_optimal)
         logger.info(

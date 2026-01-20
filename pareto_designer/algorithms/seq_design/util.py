@@ -3,7 +3,6 @@ from typing import Iterable, Generator, Iterator, Any
 
 import numpy as np
 
-from pareto_designer.algorithms.seq_design.consts import MAX_SCORES_IN_CELL
 from pareto_designer.algorithms.seq_design.types import (
     T_SOLUTION,
     T_SOL_WITH_TRACK,
@@ -58,7 +57,7 @@ def merge_sorted(
 
 def find_po(
     sorted_candidates: Iterable[T_SOL_WITH_TRACK],
-    limit: int = MAX_SCORES_IN_CELL,
+    limit: int = 0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
     """
     Finds a representative sample of Pareto-optimal tuples using NumPy masking
@@ -81,7 +80,7 @@ def find_po(
     po_indices = np.where(mask)[0]
     total_found = len(po_indices)
 
-    num_to_keep = min(total_found, limit)
+    num_to_keep = min(total_found, limit) if limit > 0 else total_found
     if num_to_keep > 1:
         sample_indices = np.round(np.linspace(0, total_found - 1, num_to_keep)).astype(
             int
@@ -103,5 +102,6 @@ def find_po(
 
 def find_po_from_sorted_iters(
     sorted_scores_iters_factories: Iterable[T_LAZY_SOL_ITER_FACTORY],
+    limit: int = 0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
-    return find_po(merge_sorted(sorted_scores_iters_factories))
+    return find_po(merge_sorted(sorted_scores_iters_factories), limit)

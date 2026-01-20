@@ -1,12 +1,13 @@
 from typing import Generic, Generator
 import sys
+from functools import partial
 
 import numpy as np
 from loguru import logger
 
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.algorithms.fsm import FSM, T_STATE, T_CHAR
-from pareto_designer.algorithms.seq_design.dp_matrix import DP_Matrix
+from pareto_designer.algorithms.seq_design.dp_matrix import DP_Matrix, get_flush_every
 from pareto_designer.algorithms.seq_design.types import (
     T_SOLUTION,
     T_LAZY_SOL_ITER_FACTORY,
@@ -24,6 +25,7 @@ class ParetoOptimalDesign(Generic[T_STATE, T_CHAR]):
         fsm: FSM[T_STATE, T_CHAR],
         binding_score_map: dict[T_STATE, float],
         motif_length: int,
+        limit_solutions: int,
         verbose: bool = True,
     ):
         self.score_function = score_function
@@ -31,19 +33,24 @@ class ParetoOptimalDesign(Generic[T_STATE, T_CHAR]):
         self.binding_score_map = binding_score_map
         self.n = sequence_length
         self.m = motif_length
+        self.limit_solutions = limit_solutions
+        self._find_po_func = partial(
+            find_po_from_sorted_iters, limit=self.limit_solutions
+        )
+        self._flush_every = get_flush_every(self.fsm, self.limit_solutions)
         self.verbose = verbose
 
         logger.remove()
         logger.add(sys.stdout, level="INFO")
 
     def find_pareto_optimal(self) -> set[tuple[str, T_SOLUTION]]:
-        with DP_Matrix(self.fsm, self.n) as dp:
+        with DP_Matrix(self.fsm, self.n, self._flush_every) as dp:
             self._dp_matrix = dp
             logger.info("Calculating DP matrix...")
             self._update_step_phase_1()
             self._update_step_phase_2()
             logger.info("Reconstructing Pareto-optimal solutions...")
-            self._po_set = self._dp_matrix.reconstruct_po_set(find_po_from_sorted_iters)
+            self._po_set = self._dp_matrix.reconstruct_po_set(self._find_po_func)
 
         return self._po_set
 
@@ -74,7 +81,7 @@ class ParetoOptimalDesign(Generic[T_STATE, T_CHAR]):
         for i in range(self.m, self.n + 1):
             self._dp_matrix.start_row()
             for v in self.fsm.V:
-                sorted_po_scores, sorted_back_ptrs = find_po_from_sorted_iters(
+                sorted_po_scores, sorted_back_ptrs = self._find_po_func(
                     self._get_sorted_scores_with_back_ptrs(i, v)
                 )
                 self._dp_matrix.update(v, sorted_po_scores, sorted_back_ptrs)

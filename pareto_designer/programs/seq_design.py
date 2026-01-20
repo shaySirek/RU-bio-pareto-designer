@@ -26,6 +26,20 @@ def parse_args():
         help="Matrix ID of the binding motif",
     )
     parser.add_argument(
+        "--reduce-fsm-by",
+        type=float,
+        default=0.875,
+        help="Specifies the percentage of reduction in size of the FSM of the binding motif (default is 0.875)",
+    )
+    parser.add_argument(
+        "--limit-solutions",
+        "-l",
+        type=int,
+        nargs="+",
+        default=[32, 64, 128],
+        help="Specifies the maximum number of Pareto-optimal sequences (default: 32, 64, 128)",
+    )
+    parser.add_argument(
         "--exact-match-cost",
         action="store_true",
         help="Use the exact match dummy cost function",
@@ -58,18 +72,27 @@ def parse_args():
 
 def main():
     args = parse_args()
-    seq_id = Path(args.target_sequence).stem
-    (
-        SequenceDesigner()
-        .with_score_function(
-            ScoreFunctionBuilder()
-            .with_target_sequence(args.target_sequence)
-            .with_is_exact_match_cost(args.exact_match_cost)
-            .with_codon_usage(args.codon_usage)
-            .with_params(alpha=args.alpha, beta=args.beta, w=args.w)
-            .build()
-        )
-        .with_binding_motif(args.matrix_id)
-        .with_reduced_fsm()
-        .run(seq_id)
+    input_path = Path(args.target_sequence)
+    seq_files = [input_path] if input_path.is_file() else input_path.glob("*.txt")
+
+    score_function_builder = (
+        ScoreFunctionBuilder()
+        .with_is_exact_match_cost(args.exact_match_cost)
+        .with_codon_usage(args.codon_usage)
+        .with_params(alpha=args.alpha, beta=args.beta, w=args.w)
     )
+    seq_designer = (
+        SequenceDesigner()
+        .with_binding_motif(args.matrix_id)
+        .with_reduced_fsm(reduction_ratio_threshold=args.reduce_fsm_by)
+    )
+
+    for seq_file in seq_files:
+        seq_id = Path(seq_file).stem
+        score_function = score_function_builder.with_target_sequence(seq_file).build()
+        for po_limit in args.limit_solutions:
+            (
+                seq_designer.with_score_function(score_function)
+                .with_limit_solutions(po_limit)
+                .run(seq_id)
+            )

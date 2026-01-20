@@ -11,10 +11,16 @@ import numpy as np
 from loguru import logger
 
 from pareto_designer.algorithms.fsm import FSM, T_STATE, T_CHAR
-from pareto_designer.algorithms.seq_design.consts import DP_FLUSH_EVERY
 from pareto_designer.algorithms.seq_design.types import T_SOLUTION, T_BACK_PTR
 
 SCORE_DTYPE = [("f", "f8"), ("b", "f8")]
+ITEM_SIZE = 12  # 4 bytes for each index in the 3-tuple
+MAX_FILE_SIZE = 16 * (1024**2)  # 16MB
+
+
+def get_flush_every(fsm: FSM, limit_solutions: int) -> int:
+    row_size_in_bytes = len(fsm.V) * limit_solutions * ITEM_SIZE
+    return int(MAX_FILE_SIZE / row_size_in_bytes)
 
 
 class BackPointer:
@@ -31,7 +37,7 @@ class DP_Matrix:
         self,
         fsm: FSM,
         n: int,
-        flush_every: int = DP_FLUSH_EVERY,
+        flush_every: int,
         checkpoint_dir: str = ".seq_design_dp_checkpoints",
     ):
         self.fsm = fsm
