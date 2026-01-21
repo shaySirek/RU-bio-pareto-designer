@@ -20,7 +20,7 @@ def export_solutions(
     score_function: ScoreFunction,
 ):
     logger.info(
-        f"Exporting {len(solutions)} Pareto-optimal solutions into {ctx.output_path}"
+        f"Exporting {ctx.n_solutions} Pareto-optimal solutions into {ctx.output_path}"
     )
     ctx.output_path.mkdir(parents=True, exist_ok=True)
 

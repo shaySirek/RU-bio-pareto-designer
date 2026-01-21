@@ -11,6 +11,7 @@ class RunContext(NamedTuple):
     motif_id: str
     fsm_size: int
     solutions_limit: int
+    n_solutions: int
     runtime: str
     output_path: Path
 

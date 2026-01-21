@@ -45,8 +45,8 @@
                 <div><strong>Binding Score:</strong> {{ "%.6f"|format(res.binding_score) }}</div>
             </div>
             <div class="downloads">
-                <a href='sequence_{{ res.id }}.fa' class="btn-download" download>.FASTA</a>
-                <a href='sequence_{{ res.id }}.txt' class="btn-download" download>.TXT</a>
+                <a href='{{ res.id }}_sequence.fa' class="btn-download" download>.FASTA</a>
+                <a href='{{ res.id }}_sequence.txt' class="btn-download" download>.TXT</a>
             </div>
         </div>
 
@@ -94,18 +94,21 @@
 
         <div class="solution-nav">
             {% set current_id = res.id | int %}
-            {% set results_count = ctx.solutions_limit %}
             
             {% if current_id > 1 %}
                 {% set prev_formatted = "%03d"|format(current_id - 1) %}
                 <a href="{{ prev_formatted }}_details.html" class="nav-link">&larr; Previous (#{{ prev_formatted }})</a>
+            {% else %}
+                <span class="nav-link disabled">&larr;</span>
             {% endif %}
             
-            <span style="color: #999; font-size: 0.9em;">Solution {{ current_id }} / {{ results_count }}</span>
+            <span style="color: #999; font-size: 0.9em;">Solution {{ current_id }} / {{ ctx.n_solutions }}</span>
 
-            {% if current_id < results_count %}
+            {% if current_id < ctx.n_solutions %}
                 {% set next_formatted = "%03d"|format(current_id + 1) %}
                 <a href="{{ next_formatted }}_details.html" class="nav-link">Next (#{{ next_formatted }}) &rarr;</a>
+            {% else %}
+                <span class="nav-link disabled">&rarr;</span>
             {% endif %}
         </div>
     </div>

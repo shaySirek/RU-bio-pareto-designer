@@ -3,121 +3,136 @@
 <head>
     <title>Pareto Front Analysis</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 20px; background: #f4f4f9; color: #333; scroll-behavior: smooth; }
-        .main-container { display: flex; flex-direction: column; gap: 24px; max-width: 100%; margin: 0 auto; }
-        .top-section { width: 100%; }
-        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        h2 { margin-top: 0; font-size: 1.4em; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
-        .input-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; }
-        .input-sub-section { margin-bottom: 10px; }
-        .input-sub-section.full-width { grid-column: 1 / -1; }
-        .input-sub-section h3 { font-size: 0.75em; text-transform: uppercase; color: #95a5a6; margin-bottom: 8px; letter-spacing: 1px; }
-        .target-box { width: 100%; background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 0.85em; max-height: 120px; overflow-y: auto; word-break: break-all; border: 1px solid #333; line-height: 1.5; box-sizing: border-box; }
-        .param-badge { background: #ebf2ff; color: #2980b9; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; font-family: monospace; border: 1px solid #d6e4ff; display: inline-block; margin: 2px; }
-        .runtime-divider { margin: 5px 0; padding: 15px; text-align: center; background: #fff; border: 1px dashed #cbd5e0; border-radius: 8px; font-size: 1.1em; color: #4a5568; font-weight: 500; }
-        .runtime-divider b { color: crimson; }
-        .bottom-row { display: grid; grid-template-columns: 1.618fr 1fr; gap: 24px; align-items: start; }
-        .plot-container { padding: 20px; }
-        svg { width: 100%; height: auto; display: block; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f4f4f9; color: #333; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        .main-container { display: grid; grid-template-columns: 1fr 1.618fr; gap: 20px; padding: 24px; flex-grow: 1; min-height: 0; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; flex-direction: column; min-height: 0; position: relative; }
+        h2 { margin-top: 0; font-size: 1.3em; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 12px; margin-bottom: 24px; }
+        .input-stack { display: flex; flex-direction: column; gap: 24px; overflow-y: auto; padding-right: 12px; scrollbar-width: thin; }
+        .input-sub-section h3 { font-size: 0.75em; text-transform: uppercase; color: #95a5a6; margin-bottom: 10px; letter-spacing: 1px; }
+        
+        .target-box-wrapper { position: relative; }
+        .target-box { width: 100%; background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 0.85em; word-break: break-all; border: 1px solid #333; line-height: 1.6; box-sizing: border-box; white-space: pre-wrap; height: 150px; overflow-y: auto; }
+        .target-box:fullscreen { height: 100vh; padding: 40px; font-size: 1.1em; }
+        
+        .expand-btn { position: absolute; top: 8px; right: 8px; background: #444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.7em; opacity: 0.7; }
+        .expand-btn:hover { opacity: 1; background: crimson; }
+
+        .highlight-orf { color: #ff5f5f; font-weight: bold; text-decoration: underline; }
+        .param-badge { background: #ebf2ff; color: #2980b9; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-family: monospace; border: 1px solid #d6e4ff; display: inline-block; margin: 3px; }
+        .orf-badge { background: #feebeb; color: #c0392b; padding: 4px 8px; border-radius: 4px; font-size: 0.75em; font-family: monospace; border: 1px solid #facdcd; }
+        
+        .plot-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        svg { width: 100%; height: 100%; max-height: 100%; }
         .dot { fill: crimson; opacity: 0.6; cursor: pointer; transition: all 0.2s; }
-        .dot:hover { opacity: 1; r: 8; stroke: #2c3e50; stroke-width: 2; }
-        .list-wrapper { max-height: 600px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
-        th { background: #f8fafc; position: sticky; top: 0; padding: 16px; text-align: left; z-index: 10; border-bottom: 2px solid #edf2f7; color: #64748b; }
-        td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
-        tr:hover { background-color: #f8fafc; }
+        .dot:hover { opacity: 1; r: 10; stroke: #2c3e50; stroke-width: 2; }
+        
+        .runtime-footer { background: white; padding: 12px; text-align: center; border-top: 1px solid #ddd; font-size: 0.95em; color: #4a5568; }
+        .runtime-footer b { color: crimson; }
     </style>
 </head>
 <body>
     <div class="main-container">
-        <div class="top-section">
-            <div class="card">
-                <h2>Design Configuration</h2>
-                <div class="input-sub-section full-width">
+        <div class="card">
+            <h2>Design Configuration</h2>
+            <div class="input-stack">
+                <div class="input-sub-section">
                     <h3>Target Sequence</h3>
                     <div style="font-size: 0.9em; color: #7f8c8d; margin-bottom: 8px;">
                         <b>{{ ctx.target_sequence | length }} bp</b> | {{ ctx.orfs | length }} ORFs
                     </div>
-                    <div class="target-box">{{ ctx.target_sequence }}</div>
+                    <div class="target-box-wrapper">
+                        <button class="expand-btn" onclick="document.getElementById('seq-view').requestFullscreen()">FULLSCREEN</button>
+                        <div id="seq-view" class="target-box">
+                            {%- for char in ctx.target_sequence -%}
+                                {%- set idx = loop.index0 -%}
+                                {%- set is_orf = namespace(active=false) -%}
+                                {%- for start, end in ctx.orfs -%}
+                                    {%- if idx >= start and idx < end -%}
+                                        {%- set is_orf.active = true -%}
+                                    {%- endif -%}
+                                {%- endfor -%}
+                                {%- if is_orf.active -%}
+                                    <span class="highlight-orf">{{ char }}</span>
+                                {%- else -%}
+                                    {{ char }}
+                                {%- endif -%}
+                            {%- endfor -%}
+                        </div>
+                    </div>
                     <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
                         {% for start, end in ctx.orfs %}
-                        <span style="background: #e1f5fe; color: #01579b; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-family: monospace;">ORF: {{ start }}-{{ end }}</span>
+                        <span class="orf-badge">ORF: {{ start }}-{{ end }}</span>
                         {% endfor %}
                     </div>
                 </div>
-                <div class="input-grid">
-                    <div class="input-sub-section">
-                        <h3>Cost Params</h3>
-                        <div>{% for key, val in ctx.cost_params.items() %}<span class="param-badge">{{ key }}: {{ val }}</span>{% endfor %}</div>
+
+                <div class="input-sub-section">
+                    <h3>Motif</h3>
+                    <div style="font-size: 1.1em; padding: 5px 0;">
+                        <a href="https://jaspar.elixir.no/matrix/{{ ctx.motif_id }}/" target="_blank" style="color: #2980b9; text-decoration: none; font-weight: bold; border-bottom: 1px dashed #2980b9;">{{ ctx.motif_id }} ↗</a>
                     </div>
-                    <div class="input-sub-section">
-                        <h3>Motif</h3>
-                        <div>
-                            <b>ID:</b> <a href="https://jaspar.elixir.no/matrix/{{ ctx.motif_id }}/" target="_blank" style="color: #2980b9; text-decoration: none; font-weight: bold;">{{ ctx.motif_id }} ↗</a><br>
-                            <b>FSM Size:</b> {{ ctx.fsm_size }}
+                </div>
+
+                <div class="input-sub-section">
+                    <h3>Cost Params</h3>
+                    <div style="line-height: 2;">
+                        {% for key, val in ctx.cost_params.items() %}
+                        <span class="param-badge">{{ key }}: {{ val }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="input-sub-section">
+                    <h3>Approximations and Limits</h3>
+                    <div style="font-size: 0.95em; line-height: 2; color: #444;">
+                        <div style="display: flex; justify-content: space-between; max-width: 250px;">
+                            <span>FSM Size:</span> <b>{{ ctx.fsm_size }}</b>
                         </div>
-                    </div>
-                    <div class="input-sub-section">
-                        <h3>Limits</h3>
-                        <div>Max Solutions: {{ ctx.solutions_limit }}</div>
+                        <div style="display: flex; justify-content: space-between; max-width: 250px;">
+                            <span>Max Solutions:</span> <b>{{ ctx.solutions_limit }}</b>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="runtime-divider">The optimization took <b>{{ ctx.runtime }}</b></div>
-
-        <div class="bottom-row">
-            <div class="card plot-container">
-                <h2>Pareto Front</h2>
+        <div class="card">
+            <h2>Pareto Front</h2>
+            <div class="plot-wrapper">
                 {% set w, h, pl, pb, pt, pr = 800, 480, 80, 70, 40, 40 %}
                 {% set min_x = results | map(attribute='cost') | min %}
                 {% set max_x = results | map(attribute='cost') | max %}
                 {% set min_y = results | map(attribute='binding_score') | min %}
                 {% set max_y = results | map(attribute='binding_score') | max %}
                 {% set rx, ry = [max_x - min_x, 0.001]|max, [max_y - min_y, 0.001]|max %}
-                <svg viewBox="0 0 {{ w }} {{ h }}">
-                    <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" font-weight="600" fill="#475569">Functional Cost</text>
-                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" transform="rotate(-90,25,{{ (h+pt-pb)/2 }})">Binding Score</text>
+                <svg viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="xMidYMid meet">
+                    <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14">Functional Cost</text>
+                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14" transform="rotate(-90,25,{{ (h+pt-pb)/2 }})">Binding Score</text>
+                    
                     {% for i in range(6) %}
                         {% set vy, py = min_y + (i*ry/5), (h-pb) - (i*(h-pb-pt)/5) %}
                         <line x1="{{ pl }}" y1="{{ py }}" x2="{{ w-pr }}" y2="{{ py }}" stroke="#f1f5f9" />
                         <text x="{{ pl-12 }}" y="{{ py+4 }}" text-anchor="end" font-size="11" fill="#94a3b8">{{ "%.2f"|format(vy) }}</text>
+                        
                         {% set vx, px = min_x + (i*rx/5), pl + (i*(w-pl-pr)/5) %}
                         <line x1="{{ px }}" y1="{{ pt }}" x2="{{ px }}" y2="{{ h-pb }}" stroke="#f1f5f9" />
                         <text x="{{ px }}" y="{{ h-pb+25 }}" text-anchor="middle" font-size="11" fill="#94a3b8">{{ "%.2f"|format(vx) }}</text>
                     {% endfor %}
+                    
                     <line x1="{{ pl }}" y1="{{ h-pb }}" x2="{{ w-pr }}" y2="{{ h-pb }}" stroke="#cbd5e0" stroke-width="2" />
                     <line x1="{{ pl }}" y1="{{ pt }}" x2="{{ pl }}" y2="{{ h-pb }}" stroke="#cbd5e0" stroke-width="2" />
+                    
                     {% for r in results %}
-                        <a href='{{ "%03d"|format(r.id|int) }}_details.html'>
-                            <circle cx="{{ pl + (r.cost-min_x)/rx*(w-pl-pr) }}" cy="{{ (h-pb)-(r.binding_score-min_y)/ry*(h-pb-pt) }}" r="6" class="dot">
-                                <title>ID: {{ "%03d"|format(r.id|int) }} | Cost: {{ r.cost }}</title>
+                        <a href='{{ r.url }}'>
+                            <circle cx="{{ pl + (r.cost-min_x)/rx*(w-pl-pr) }}" cy="{{ (h-pb)-(r.binding_score-min_y)/ry*(h-pb-pt) }}" r="7" class="dot">
+                                <title>Solution #{{ "%03d"|format(r.id|int) }}&#10;Cost: {{ "%.4f"|format(r.cost) }}&#10;Score: {{ "%.4f"|format(r.binding_score) }}</title>
                             </circle>
                         </a>
                     {% endfor %}
                 </svg>
             </div>
-
-            <div class="card">
-                <h2>Solutions</h2>
-                <div class="list-wrapper">
-                    <table>
-                        <thead><tr><th>ID</th><th>Cost ↓</th><th>Score</th><th>Action</th></tr></thead>
-                        <tbody>
-                            {% for r in results | sort(attribute='cost') %}
-                            <tr id='row-{{ "%03d"|format(r.id|int) }}'>
-                                <td><code>#{{ "%03d"|format(r.id|int) }}</code></td>
-                                <td><strong>{{ "%.4f"|format(r.cost) }}</strong></td>
-                                <td>{{ "%.4f"|format(r.binding_score) }}</td>
-                                <td><a href='{{ "%03d"|format(r.id|int) }}_details.html' style="color:crimson; text-decoration:none; font-weight:bold;">Report ↗</a></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </div>
     </div>
+    <div class="runtime-footer">The optimization took <b>{{ ctx.runtime }}</b></div>
 </body>
 </html>

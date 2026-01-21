@@ -138,6 +138,7 @@ class SequenceDesigner:
             motif_id=self._motif_id,
             fsm_size=self._fsm_size,
             solutions_limit=self._solutions_limit,
+            n_solutions=len(self._solutions),
             runtime=self._runtime,
             output_path=output_path,
         )
