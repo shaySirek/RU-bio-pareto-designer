@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
@@ -131,3 +133,21 @@ class BioCostFunction(ScoreFunction):
             self._beta,
             self._w,
         )
+
+    @property
+    def orfs(self) -> list[tuple[int, int]]:
+        return [
+            (m.start() + 1, m.end() - 1)
+            for m in re.finditer(
+                r"12-3[123-]*3(?=0|$)", "".join(map(str, self._coding_positions))
+            )
+        ]
+
+    @property
+    def params(self) -> dict:
+        return {
+            "Transition": self._alpha,
+            "Transversion": self._beta,
+            "Non-synonymous codon": self._w,
+            "Synonymous codon": "by codon usage",
+        }

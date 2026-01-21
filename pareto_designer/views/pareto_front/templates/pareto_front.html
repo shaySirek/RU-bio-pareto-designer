@@ -3,121 +3,119 @@
 <head>
     <title>Pareto Front Analysis</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: #f4f4f9; }
-        .container { max-width: 1100px; margin: auto; display: flex; flex-direction: column; gap: 20px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        
-        /* Inputs Section Styles */
-        .input-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; align-items: start; }
-        .input-item label { display: block; font-weight: bold; margin-bottom: 8px; color: #555; }
-        .target-box { 
-            background: #272822; color: #f8f8f2; padding: 10px; border-radius: 4px; 
-            font-family: monospace; font-size: 0.9em; max-height: 80px; 
-            overflow-y: auto; word-break: break-all; border: 1px solid #333;
-        }
-        .jaspar-link { 
-            display: inline-block; padding: 5px 12px; background: #004481; color: white; 
-            text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 0.9em;
-        }
-        .jaspar-link:hover { background: #0056a3; }
-
-        /* Plot & List Styles */
-        .plot-container { text-align: center; }
-        .dot { fill: crimson; opacity: 0.6; cursor: pointer; transition: opacity 0.2s; }
-        .dot:hover { opacity: 1; stroke: black; stroke-width: 2; }
-        .axis { stroke: #333; stroke-width: 2; }
-        .axis-label { font-size: 14px; font-weight: bold; fill: #333; }
-        
-        .list-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #eee; position: sticky; top: 0; padding: 12px; text-align: left; z-index: 10; }
-        td { padding: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
-        tr:hover { background: #fff5f5; }
-        
-        .link-main { color: crimson; text-decoration: none; font-weight: bold; margin-right: 15px; }
-        .link-dl { 
-            color: #666; text-decoration: none; font-size: 0.85em; 
-            background: #f0f0f0; padding: 3px 8px; border-radius: 3px; border: 1px solid #ccc;
-            margin-right: 5px;
-        }
-        .link-dl:hover { background: #e0e0e0; color: #333; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 20px; background: #f4f4f9; color: #333; scroll-behavior: smooth; }
+        .main-container { display: flex; flex-direction: column; gap: 24px; max-width: 100%; margin: 0 auto; }
+        .top-section { width: 100%; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; font-size: 1.4em; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .input-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; }
+        .input-sub-section { margin-bottom: 10px; }
+        .input-sub-section.full-width { grid-column: 1 / -1; }
+        .input-sub-section h3 { font-size: 0.75em; text-transform: uppercase; color: #95a5a6; margin-bottom: 8px; letter-spacing: 1px; }
+        .target-box { width: 100%; background: #1e1e1e; color: #d4d4d4; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 0.85em; max-height: 120px; overflow-y: auto; word-break: break-all; border: 1px solid #333; line-height: 1.5; box-sizing: border-box; }
+        .param-badge { background: #ebf2ff; color: #2980b9; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; font-family: monospace; border: 1px solid #d6e4ff; display: inline-block; margin: 2px; }
+        .runtime-divider { margin: 5px 0; padding: 15px; text-align: center; background: #fff; border: 1px dashed #cbd5e0; border-radius: 8px; font-size: 1.1em; color: #4a5568; font-weight: 500; }
+        .runtime-divider b { color: crimson; }
+        .bottom-row { display: grid; grid-template-columns: 1.618fr 1fr; gap: 24px; align-items: start; }
+        .plot-container { padding: 20px; }
+        svg { width: 100%; height: auto; display: block; }
+        .dot { fill: crimson; opacity: 0.6; cursor: pointer; transition: all 0.2s; }
+        .dot:hover { opacity: 1; r: 8; stroke: #2c3e50; stroke-width: 2; }
+        .list-wrapper { max-height: 600px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+        th { background: #f8fafc; position: sticky; top: 0; padding: 16px; text-align: left; z-index: 10; border-bottom: 2px solid #edf2f7; color: #64748b; }
+        td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+        tr:hover { background-color: #f8fafc; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card">
-            <h2>Optimization Inputs</h2>
-            <div class="input-grid">
-                <div class="input-item">
-                    <label>Binding Motif</label>
-                    <a href="https://jaspar.elixir.no/matrix/{{ motif_id }}/" target="_blank" class="jaspar-link">
-                        {{ motif_id }} ↗
-                    </a>
+    <div class="main-container">
+        <div class="top-section">
+            <div class="card">
+                <h2>Design Configuration</h2>
+                <div class="input-sub-section full-width">
+                    <h3>Target Sequence</h3>
+                    <div style="font-size: 0.9em; color: #7f8c8d; margin-bottom: 8px;">
+                        <b>{{ ctx.target_sequence | length }} bp</b> | {{ ctx.orfs | length }} ORFs
+                    </div>
+                    <div class="target-box">{{ ctx.target_sequence }}</div>
+                    <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
+                        {% for start, end in ctx.orfs %}
+                        <span style="background: #e1f5fe; color: #01579b; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-family: monospace;">ORF: {{ start }}-{{ end }}</span>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div class="input-item">
-                    <label>Target Sequence</label>
-                    <div class="target-box">{{ results[0].target_sequence }}</div>
+                <div class="input-grid">
+                    <div class="input-sub-section">
+                        <h3>Cost Params</h3>
+                        <div>{% for key, val in ctx.cost_params.items() %}<span class="param-badge">{{ key }}: {{ val }}</span>{% endfor %}</div>
+                    </div>
+                    <div class="input-sub-section">
+                        <h3>Motif</h3>
+                        <div>
+                            <b>ID:</b> <a href="https://jaspar.elixir.no/matrix/{{ ctx.motif_id }}/" target="_blank" style="color: #2980b9; text-decoration: none; font-weight: bold;">{{ ctx.motif_id }} ↗</a><br>
+                            <b>FSM Size:</b> {{ ctx.fsm_size }}
+                        </div>
+                    </div>
+                    <div class="input-sub-section">
+                        <h3>Limits</h3>
+                        <div>Max Solutions: {{ ctx.solutions_limit }}</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="card plot-container">
-            <h2>Pareto Front</h2>
-            {% set width, height = 800, 450 %}
-            {% set padding_left, padding_bottom = 80, 60 %}
-            {% set padding_top, padding_right = 40, 40 %}
+        <div class="runtime-divider">The optimization took <b>{{ ctx.runtime }}</b></div>
 
-            {% set min_x = results | map(attribute='cost') | min %}
-            {% set max_x = results | map(attribute='cost') | max %}
-            {% set min_y = results | map(attribute='score') | min %}
-            {% set max_y = results | map(attribute='score') | max %}
-            
-            <svg width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
-                <text x="{{ (width + padding_left - padding_right) / 2 }}" y="{{ height - 10 }}" text-anchor="middle" class="axis-label">Functional Cost</text>
-                <text x="25" y="{{ (height + padding_top - padding_bottom) / 2 }}" text-anchor="middle" class="axis-label" transform="rotate(-90, 25, {{ (height + padding_top - padding_bottom) / 2 }})">Binding Score</text>
+        <div class="bottom-row">
+            <div class="card plot-container">
+                <h2>Pareto Front</h2>
+                {% set w, h, pl, pb, pt, pr = 800, 480, 80, 70, 40, 40 %}
+                {% set min_x = results | map(attribute='cost') | min %}
+                {% set max_x = results | map(attribute='cost') | max %}
+                {% set min_y = results | map(attribute='binding_score') | min %}
+                {% set max_y = results | map(attribute='binding_score') | max %}
+                {% set rx, ry = [max_x - min_x, 0.001]|max, [max_y - min_y, 0.001]|max %}
+                <svg viewBox="0 0 {{ w }} {{ h }}">
+                    <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" font-weight="600" fill="#475569">Functional Cost</text>
+                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" transform="rotate(-90,25,{{ (h+pt-pb)/2 }})">Binding Score</text>
+                    {% for i in range(6) %}
+                        {% set vy, py = min_y + (i*ry/5), (h-pb) - (i*(h-pb-pt)/5) %}
+                        <line x1="{{ pl }}" y1="{{ py }}" x2="{{ w-pr }}" y2="{{ py }}" stroke="#f1f5f9" />
+                        <text x="{{ pl-12 }}" y="{{ py+4 }}" text-anchor="end" font-size="11" fill="#94a3b8">{{ "%.2f"|format(vy) }}</text>
+                        {% set vx, px = min_x + (i*rx/5), pl + (i*(w-pl-pr)/5) %}
+                        <line x1="{{ px }}" y1="{{ pt }}" x2="{{ px }}" y2="{{ h-pb }}" stroke="#f1f5f9" />
+                        <text x="{{ px }}" y="{{ h-pb+25 }}" text-anchor="middle" font-size="11" fill="#94a3b8">{{ "%.2f"|format(vx) }}</text>
+                    {% endfor %}
+                    <line x1="{{ pl }}" y1="{{ h-pb }}" x2="{{ w-pr }}" y2="{{ h-pb }}" stroke="#cbd5e0" stroke-width="2" />
+                    <line x1="{{ pl }}" y1="{{ pt }}" x2="{{ pl }}" y2="{{ h-pb }}" stroke="#cbd5e0" stroke-width="2" />
+                    {% for r in results %}
+                        <a href='{{ "%03d"|format(r.id|int) }}_details.html'>
+                            <circle cx="{{ pl + (r.cost-min_x)/rx*(w-pl-pr) }}" cy="{{ (h-pb)-(r.binding_score-min_y)/ry*(h-pb-pt) }}" r="6" class="dot">
+                                <title>ID: {{ "%03d"|format(r.id|int) }} | Cost: {{ r.cost }}</title>
+                            </circle>
+                        </a>
+                    {% endfor %}
+                </svg>
+            </div>
 
-                <line x1="{{ padding_left }}" y1="{{ height - padding_bottom }}" x2="{{ width - padding_right }}" y2="{{ height - padding_bottom }}" class="axis" />
-                <line x1="{{ padding_left }}" y1="{{ padding_top }}" x2="{{ padding_left }}" y2="{{ height - padding_bottom }}" class="axis" />
-                
-                {% for r in results %}
-                    {% set cx = padding_left + (r.cost - min_x) / (max_x - min_x + 0.0001) * (width - padding_left - padding_right) %}
-                    {% set cy = (height - padding_bottom) - (r.score - min_y) / (max_y - min_y + 0.0001) * (height - padding_bottom - padding_top) %}
-                    <a href="{{ r.url }}">
-                        <circle cx="{{ cx }}" cy="{{ cy }}" r="7" class="dot">
-                            <title>ID: {{ r.id }}&#10;Cost: {{ r.cost | round(4) }}&#10;Score: {{ r.score | round(4) }}</title>
-                        </circle>
-                    </a>
-                {% endfor %}
-            </svg>
-        </div>
-
-        <div class="card">
-            <h2>Solutions List</h2>
-            <div class="list-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Functional Cost</th>
-                            <th>Binding Score</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in results | sort(attribute='cost') %}
-                        <tr>
-                            <td><strong>{{ r.id }}</strong></td>
-                            <td>{{ "%.4f"|format(r.cost) }}</td>
-                            <td>{{ "%.4f"|format(r.score) }}</td>
-                            <td>
-                                <a href="{{ r.url }}" class="link-main">View Report</a>
-                                <a href="{{ r.id }}_sequence.fa" download class="link-dl">FASTA</a>
-                                <a href="{{ r.id }}_sequence.txt" download class="link-dl">TXT</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="card">
+                <h2>Solutions</h2>
+                <div class="list-wrapper">
+                    <table>
+                        <thead><tr><th>ID</th><th>Cost ↓</th><th>Score</th><th>Action</th></tr></thead>
+                        <tbody>
+                            {% for r in results | sort(attribute='cost') %}
+                            <tr id='row-{{ "%03d"|format(r.id|int) }}'>
+                                <td><code>#{{ "%03d"|format(r.id|int) }}</code></td>
+                                <td><strong>{{ "%.4f"|format(r.cost) }}</strong></td>
+                                <td>{{ "%.4f"|format(r.binding_score) }}</td>
+                                <td><a href='{{ "%03d"|format(r.id|int) }}_details.html' style="color:crimson; text-decoration:none; font-weight:bold;">Report ↗</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

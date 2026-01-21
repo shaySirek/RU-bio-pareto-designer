@@ -36,8 +36,8 @@ def parse_args():
         "-l",
         type=int,
         nargs="+",
-        default=[32, 64, 128],
-        help="Specifies the maximum number of Pareto-optimal sequences (default: 32, 64, 128)",
+        default=[64, 128],
+        help="Specifies the maximum number of Pareto-optimal sequences (default: 64, 128)",
     )
     parser.add_argument(
         "--exact-match-cost",
@@ -88,11 +88,10 @@ def main():
     )
 
     for seq_file in seq_files:
-        seq_id = Path(seq_file).stem
-        score_function = score_function_builder.with_target_sequence(seq_file).build()
         for po_limit in args.limit_solutions:
             (
-                seq_designer.with_score_function(score_function)
-                .with_limit_solutions(po_limit)
-                .run(seq_id)
+                seq_designer.with_target_sequence(seq_file, score_function_builder)
+                .with_solutions_limit(po_limit)
+                .run()
+                .export()
             )

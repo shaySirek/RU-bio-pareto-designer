@@ -27,3 +27,11 @@ class ScoreFunction(ABC):
 
     def __call__(self, *args, **kwds):
         return -self.cost(*args)
+
+    @property
+    def orfs(self) -> list[tuple[int, int]]:
+        return []
+
+    @property
+    def params(self) -> dict:
+        return {}

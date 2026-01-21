@@ -1,15 +1,14 @@
-from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Iterable
+from concurrent.futures import ThreadPoolExecutor, wait
 
-from loguru import logger
 import numpy as np
-from pathlib import Path
+from loguru import logger
 
 from pareto_designer.algorithms.seq_design.types import T_SOLUTION
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.parsing import write_sequence
+from pareto_designer.models.pareto_front import RunContext, ParetoResult
 from pareto_designer.views.pareto_front.html_exporter import (
-    ParetoResult,
     render_solution_html,
     render_pareto_front,
 )
@@ -17,16 +16,17 @@ from pareto_designer.views.pareto_front.html_exporter import (
 
 def export_solutions(
     solutions: Iterable[tuple[str, T_SOLUTION]],
+    ctx: RunContext,
     score_function: ScoreFunction,
-    motif_id: str,
-    path: Path,
 ):
-    logger.info(f"Exporting {len(solutions)} Pareto-optimal solutions into {str(path)}")
-    path.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        f"Exporting {len(solutions)} Pareto-optimal solutions into {ctx.output_path}"
+    )
+    ctx.output_path.mkdir(parents=True, exist_ok=True)
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
-            executor.submit(export_solution, idx, sol, score_function, path)
+            executor.submit(export_solution, idx, sol, ctx, score_function)
             for idx, sol in enumerate(sorted(solutions, key=lambda x: -x[1][0]))
         ]
         done, _ = wait(futures)
@@ -34,20 +34,18 @@ def export_solutions(
         results: list[ParetoResult] = []
         for future in done:
             try:
-                res = future.result()
-                results.append(res)
+                results.append(future.result())
             except Exception as e:
                 logger.error(f"Task failed with error: {e}")
 
-    if results:
-        render_pareto_front(results, motif_id, path)
+    render_pareto_front(ctx, results)
 
 
 def export_solution(
     sol_idx: int,
     solution: tuple[str, T_SOLUTION],
+    ctx: RunContext,
     score_function: ScoreFunction,
-    path: Path,
 ) -> ParetoResult:
     sol_id = f"{sol_idx + 1:03d}"
     sequence, (f_score, binding_score) = solution
@@ -73,18 +71,17 @@ def export_solution(
 
     result = ParetoResult(
         cost=functional_cost,
-        score=binding_score,
+        binding_score=binding_score,
         id=sol_id,
         url=f"{sol_id}_details.html",
         sequence=sequence,
-        target_sequence=score_function.target_sequence,
         costs=costs,
     )
-    render_solution_html(result, path)
+    render_solution_html(ctx, result)
 
-    sol_path = path / f"{sol_id}_sequence.txt"
-    with sol_path.open("wt") as f:
+    sol_base = ctx.output_path / f"{sol_id}_sequence"
+    with sol_base.with_suffix(".txt").open("wt") as f:
         f.write(sequence)
-    write_sequence(sol_path.with_suffix(".fa"), sequence)
+    write_sequence(sol_base.with_suffix(".fa"), sequence)
 
     return result
