@@ -6,8 +6,8 @@ from pathlib import Path
 from loguru import logger
 import pandas as pd
 
-from pareto_designer.bio_fetcher.motif import BindingMotif
-from pareto_designer.bio_fetcher.structs import Region
+from pareto_designer.models.motif import BindingMotif
+from pareto_designer.models.region import Region
 from pareto_designer.bio_fetcher.paths import FIMO_DIR
 
 

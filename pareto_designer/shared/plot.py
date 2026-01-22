@@ -11,7 +11,7 @@ import mpld3
 from scipy.stats import pearsonr
 
 from pareto_designer.shared.fsm_utils.coloring import PartitioningMethod
-from pareto_designer.bio_fetcher.motif import BindingMotif, StrandForBindingScore
+from pareto_designer.models.motif import BindingMotif, StrandForBindingScore
 
 warnings.filterwarnings("ignore")
 

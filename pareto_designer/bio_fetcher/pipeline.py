@@ -7,7 +7,7 @@ import pandas as pd
 from pareto_designer.bio_fetcher.motif import BindingMotif
 from pareto_designer.bio_fetcher.ensembl import fetch_species_genes, fetch_cdss_by_id
 from pareto_designer.bio_fetcher.fimo import find_hits
-from pareto_designer.bio_fetcher.structs import Region
+from pareto_designer.models.region import Region
 from pareto_designer.bio_fetcher.paths import (
     MOTIF_DIR,
     STATS_DIR,

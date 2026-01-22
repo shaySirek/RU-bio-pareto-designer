@@ -1,6 +1,7 @@
 from loguru import logger
 
-from pareto_designer.bio_fetcher.motif import BindingMotif, StrandForBindingScore
+from pareto_designer.bio_fetcher.motif import BindingMotif
+from pareto_designer.models.motif import StrandForBindingScore
 from pareto_designer.shared.fsm_utils.coloring import (
     partition_to_colors,
     PartitioningMethod,

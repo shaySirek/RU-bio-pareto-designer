@@ -9,7 +9,7 @@ import pandas as pd
 import seaborn as sns
 
 from pareto_designer.algorithms.fsm import FSM, T_STATE, T_CHAR
-from pareto_designer.bio_fetcher.motif import BindingMotif
+from pareto_designer.models.motif import BindingMotif
 
 DNA_BASES = ["A", "C", "G", "T"]
 BASE_COLORS = {"A": "green", "C": "blue", "G": "orange", "T": "red"}

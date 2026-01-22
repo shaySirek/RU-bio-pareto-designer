@@ -9,7 +9,7 @@ from pareto_designer.shared.fsm_utils.coloring import (
     partition_to_colors,
     PartitioningMethod,
 )
-from pareto_designer.bio_fetcher.motif import BindingMotif
+from pareto_designer.models.motif import BindingMotif
 from pareto_designer.shared.fsm_utils.fsm_factory import get_binding_motif_fsm
 from pareto_designer.algorithms.fsm_reduction.colored_db_fsm_reducer import (
     Colored_DB_FSM_Reducer,

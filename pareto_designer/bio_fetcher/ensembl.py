@@ -6,7 +6,7 @@ from http import HTTPStatus
 import requests
 from loguru import logger
 
-from pareto_designer.bio_fetcher.structs import Region
+from pareto_designer.models.region import Region
 from pareto_designer.bio_fetcher.paths import SEQ_DIR
 
 ENSEMBL_SERVER = "https://rest.ensembl.org"

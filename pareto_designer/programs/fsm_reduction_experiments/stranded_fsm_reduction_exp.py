@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from pareto_designer.bio_fetcher.motif import BindingMotif, StrandForBindingScore
+from pareto_designer.models.motif import BindingMotif, StrandForBindingScore
 from pareto_designer.shared.fsm_utils.fsm_factory import (
     get_binding_motif_fsm_all_strands,
 )

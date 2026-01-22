@@ -7,7 +7,7 @@ from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
 )
 from pareto_designer.algorithms.seq_design.algorithm import ParetoOptimalDesign
 from pareto_designer.algorithms.seq_design.types import T_SOLUTION
-from pareto_designer.bio_fetcher.motif import BindingMotif
+from pareto_designer.models.motif import BindingMotif
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.fsm_utils.fsm_factory import get_binding_motif_fsm
 from pareto_designer.shared.fsm_utils.reduced_fsms_generator import get_reduced_fsms

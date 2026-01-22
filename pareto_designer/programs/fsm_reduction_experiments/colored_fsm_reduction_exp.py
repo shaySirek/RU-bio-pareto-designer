@@ -72,7 +72,7 @@ def colored_run_on_motif(
 ) -> Iterator[dict[str, Any]]:
     logger.info(f"\nRunning {len(n_colors_list)} experiments for motif {matrix_id}...")
     motif_ctx, db_fsm, binding_score_map = get_binding_motif_fsm(
-        matrix_id, reverse_complement
+        matrix_id, reverse_complement=reverse_complement
     )
     matrix_id = motif_ctx.matrix_id
     n_states_db_fsm = len(db_fsm.V)

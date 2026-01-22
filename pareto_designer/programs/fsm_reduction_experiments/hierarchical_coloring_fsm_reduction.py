@@ -72,7 +72,9 @@ def run(
         f" for motif {matrix_id}..."
     )
     motif_ctx, db_fsm, binding_score_map = get_binding_motif_fsm(
-        matrix_id, reverse_complement, counts_override
+        matrix_id,
+        reverse_complement=reverse_complement,
+        counts_override=counts_override,
     )
     matrix_id = motif_ctx.matrix_id
 
