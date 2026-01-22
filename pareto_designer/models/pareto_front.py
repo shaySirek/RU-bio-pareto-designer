@@ -21,5 +21,8 @@ class ParetoResult(NamedTuple):
     binding_score: float
     id: str
     url: str
+    txt_file: str
+    fasta_file: str
     sequence: str
     costs: np.ndarray
+    n_motif_hits: int

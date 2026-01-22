@@ -142,5 +142,5 @@ class SequenceDesigner:
             runtime=self._runtime,
             output_path=output_path,
         )
-        export_solutions(self._solutions, ctx, self._score_function)
+        export_solutions(self._solutions, ctx, self._score_function, self._motif)
         return self

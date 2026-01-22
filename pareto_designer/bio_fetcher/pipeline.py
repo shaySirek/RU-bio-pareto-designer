@@ -6,7 +6,7 @@ import pandas as pd
 
 from pareto_designer.bio_fetcher.motif import BindingMotif
 from pareto_designer.bio_fetcher.ensembl import fetch_species_genes, fetch_cdss_by_id
-from pareto_designer.bio_fetcher.fimo import find_hits
+from pareto_designer.bio_fetcher.fimo import find_hits_in_region
 from pareto_designer.models.region import Region
 from pareto_designer.bio_fetcher.paths import (
     MOTIF_DIR,
@@ -30,8 +30,8 @@ def _get_genes_motif_hits_stats(
         "motif_hit_pvalue": fimo_pval,
     }
     for region, fasta_file in fetch_species_genes(species):
-        hits = find_hits(region, fasta_file, motif, motif_file, fimo_pval)
-        if hits:
+        _, hits = find_hits_in_region(region, fasta_file, motif, motif_file, fimo_pval)
+        if not hits.empty:
             yield {
                 **region.to_dict(),
                 **motif_related_obj,
@@ -62,8 +62,10 @@ def find_hits_in_genes(
         bases_after=bases_after_cds,
     ):
         fasta_to_txt_with_marked_cds(fasta_file, bases_before_cds)
-        outdir, hits = find_hits(region, fasta_file, motif, motif_file, fimo_pval)
-        if hits is not None:
+        outdir, hits = find_hits_in_region(
+            region, fasta_file, motif, motif_file, fimo_pval
+        )
+        if not hits.empty:
             region_hits_to_bed_file(region, motif, hits, outdir / MOTIF_HITS_FILENAME)
 
 

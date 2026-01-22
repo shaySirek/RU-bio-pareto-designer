@@ -21,13 +21,19 @@
         .param-badge { background: #ebf2ff; color: #2980b9; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-family: monospace; border: 1px solid #d6e4ff; display: inline-block; margin: 3px; }
         .orf-badge { background: #feebeb; color: #c0392b; padding: 4px 8px; border-radius: 4px; font-size: 0.75em; font-family: monospace; border: 1px solid #facdcd; }
         
-        .plot-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .plot-wrapper { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
         svg { width: 100%; height: 100%; max-height: 100%; }
-        .dot { fill: crimson; opacity: 0.6; cursor: pointer; transition: all 0.2s; }
+        
+        .dot { opacity: 0.8; cursor: pointer; transition: all 0.2s; stroke: white; stroke-width: 1; }
         .dot:hover { opacity: 1; r: 10; stroke: #2c3e50; stroke-width: 2; }
         
-        .runtime-footer { background: white; padding: 12px; text-align: center; border-top: 1px solid #ddd; font-size: 0.95em; color: #4a5568; }
-        .runtime-footer b { color: crimson; }
+        .legend { display: flex; gap: 15px; margin-top: 10px; font-size: 0.8em; color: #64748b; background: #f8fafc; padding: 8px 16px; border-radius: 20px; border: 1px solid #e2e8f0; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .swatch { width: 10px; height: 10px; border-radius: 50%; }
+
+        .section-divider { border: 0; border-top: 2px solid #f0f0f0; margin: 10px 0; }
+        .info-row { display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 8px; color: #444; }
+        .info-row b { color: crimson; }
     </style>
 </head>
 <body>
@@ -93,6 +99,18 @@
                         </div>
                     </div>
                 </div>
+
+                <hr class="section-divider">
+
+                <div class="input-sub-section">
+                    <h2>Solutions</h2>
+                    <div class="info-row">
+                        <span>Runtime:</span> <b>{{ ctx.runtime }}</b>
+                    </div>
+                    <div class="info-row">
+                        <span>Number of Solutions:</span> <b>{{ ctx.n_solutions }}</b>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -105,6 +123,7 @@
                 {% set min_y = results | map(attribute='binding_score') | min %}
                 {% set max_y = results | map(attribute='binding_score') | max %}
                 {% set rx, ry = [max_x - min_x, 0.001]|max, [max_y - min_y, 0.001]|max %}
+                
                 <svg viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="xMidYMid meet">
                     <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14">Functional Cost</text>
                     <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14" transform="rotate(-90,25,{{ (h+pt-pb)/2 }})">Binding Score</text>
@@ -123,16 +142,36 @@
                     <line x1="{{ pl }}" y1="{{ pt }}" x2="{{ pl }}" y2="{{ h-pb }}" stroke="#cbd5e0" stroke-width="2" />
                     
                     {% for r in results %}
+                        {% if r.n_motif_hits == 0 %}
+                            {% set dot_color = "#cbd5e0" %}
+                        {% elif r.n_motif_hits == 1 %}
+                            {% set dot_color = "#d8b4fe" %}
+                        {% elif r.n_motif_hits <= 5 %}
+                            {% set dot_color = "#a855f7" %}
+                        {% else %}
+                            {% set dot_color = "#6b21a8" %}
+                        {% endif %}
+
                         <a href='{{ r.url }}'>
-                            <circle cx="{{ pl + (r.cost-min_x)/rx*(w-pl-pr) }}" cy="{{ (h-pb)-(r.binding_score-min_y)/ry*(h-pb-pt) }}" r="7" class="dot">
-                                <title>Solution #{{ "%03d"|format(r.id|int) }}&#10;Cost: {{ "%.4f"|format(r.cost) }}&#10;Score: {{ "%.4f"|format(r.binding_score) }}</title>
+                            <circle cx="{{ pl + (r.cost-min_x)/rx*(w-pl-pr) }}" 
+                                    cy="{{ (h-pb)-(r.binding_score-min_y)/ry*(h-pb-pt) }}" 
+                                    r="7" 
+                                    fill="{{ dot_color }}"
+                                    class="dot">
+                                <title>Solution #{{ "%03d"|format(r.id|int) }}&#10;Cost: {{ "%.4f"|format(r.cost) }}&#10;Score: {{ "%.4f"|format(r.binding_score) }}&#10;Hits: {{ r.n_motif_hits }}</title>
                             </circle>
                         </a>
                     {% endfor %}
                 </svg>
+
+                <div class="legend">
+                    <div class="legend-item"><div class="swatch" style="background: #cbd5e0;"></div> 0 hits</div>
+                    <div class="legend-item"><div class="swatch" style="background: #d8b4fe;"></div> 1 hit</div>
+                    <div class="legend-item"><div class="swatch" style="background: #a855f7;"></div> 2-5 hits</div>
+                    <div class="legend-item"><div class="swatch" style="background: #6b21a8;"></div> 5+ hits</div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="runtime-footer">The optimization took <b>{{ ctx.runtime }}</b></div>
 </body>
 </html>
