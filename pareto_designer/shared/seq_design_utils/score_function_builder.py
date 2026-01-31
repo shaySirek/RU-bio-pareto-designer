@@ -9,21 +9,15 @@ from pareto_designer.shared.cds_util import get_coding_positions
 
 class ScoreFunctionBuilder:
     def __init__(self):
-        self._target_sequence = None
-        self._is_exact_match_cost = False
-        self._coding_positions = None
-        self._codon_usage = None
-        self._alpha = None
-        self._beta = None
-        self._w = None
+        self._target_sequence: str = None
+        self._is_exact_match_cost: bool = False
+        self._codon_usage: dict[str, float] = None
+        self._alpha: float = None
+        self._beta: float = None
+        self._w: float = None
 
     def with_target_sequence(self, seq_file: Path) -> "ScoreFunctionBuilder":
         self._target_sequence = read_sequence(seq_file)
-        return self
-
-    def with_slice(self, start: int, end: int) -> "ScoreFunctionBuilder":
-        if self._target_sequence:
-            self._target_sequence = self._target_sequence[start:end]
         return self
 
     def with_is_exact_match_cost(
@@ -45,21 +39,15 @@ class ScoreFunctionBuilder:
         return self
 
     def build(self) -> ScoreFunction:
-        if not self._is_exact_match_cost:
-            self._target_sequence, self._coding_positions = get_coding_positions(
-                self._target_sequence
-            )
+        if self._is_exact_match_cost:
+            return ExactMatchCostFunction(self._target_sequence)
 
-        score_function_cls = (
-            ExactMatchCostFunction if self._is_exact_match_cost else BioCostFunction
-        )
-        missing = [
-            f for f in score_function_cls.required_fields if getattr(self, f) is None
-        ]
-        if missing:
-            fields_str = ", ".join(missing)
-            raise ValueError(f"Cannot create score function, missing: {fields_str}.")
-
-        return score_function_cls(
-            *[getattr(self, f) for f in score_function_cls.required_fields]
+        target_sequence, coding_positions = get_coding_positions(self._target_sequence)
+        return BioCostFunction(
+            target_sequence,
+            coding_positions,
+            self._codon_usage,
+            self._alpha,
+            self._beta,
+            self._w,
         )

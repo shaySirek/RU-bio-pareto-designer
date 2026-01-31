@@ -1,5 +1,6 @@
 from loguru import logger
 from pathlib import Path
+from copy import deepcopy
 
 from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
@@ -22,12 +23,13 @@ from pareto_designer.shared.seq_design_utils.export import export_solutions
 class SequenceDesigner:
     def __init__(self):
         self._sequence_id: str = None
+        self._score_function_builder: ScoreFunctionBuilder = None
         self._score_function: ScoreFunction = None
         self._motif: BindingMotif = None
         self._fsm: FSM = None
         self._binding_score_map: dict[str, float] = None
         self._fsm_id: str = None
-        self._solutions_limit: int = None
+        self._solutions_limit: int = 0  # 0 -> unbounded
         self._solutions: set[tuple[str, T_SOLUTION]] = None
         self._duration: float = None
 
@@ -63,9 +65,9 @@ class SequenceDesigner:
         self, sequence_file: Path, score_function_builder: ScoreFunctionBuilder
     ) -> "SequenceDesigner":
         self._sequence_id = sequence_file.stem
-        self._score_function = score_function_builder.with_target_sequence(
+        self._score_function_builder = score_function_builder.with_target_sequence(
             sequence_file
-        ).build()
+        )
         return self
 
     def with_binding_motif(self, matrix_id: str) -> "SequenceDesigner":
@@ -86,16 +88,23 @@ class SequenceDesigner:
         fsm_reducer = DB_FSM_Reducer[str, str](
             self._fsm, self._binding_score_map, self._motif_id
         )
-        self._fsm, self._binding_score_map, mse = next(
-            get_reduced_fsms(
-                fsm_reducer,
-                delta_mse_threshold,
-                reduction_ratio_threshold,
-            )
+        reduced_fsms_iter = get_reduced_fsms(
+            fsm_reducer,
+            delta_mse_threshold,
+            reduction_ratio_threshold,
+        )
+        fsm, binding_score_map, mse = next(reduced_fsms_iter)
+        self._fsm = deepcopy(fsm)
+        self._binding_score_map = binding_score_map.copy()
+        mse_at_trivial_fsm = mse
+        for _, _, current_mse in reduced_fsms_iter:
+            mse_at_trivial_fsm = current_mse
+        reduction_efficiency = (
+            1 - (mse / mse_at_trivial_fsm) if mse_at_trivial_fsm > 0 else 1
         )
         self._fsm_id = f"reduced_fsm_{self._fsm_size}"
         logger.info(
-            f"Reduced DB FSM to FSM with {self._fsm_size} states and MSE={mse:.3f}"
+            f"Reduced DB FSM to FSM with {self._fsm_size} states and MSE={mse:.3f} (reduction efficiency={reduction_efficiency:.3f})"
         )
         return self
 
@@ -103,7 +112,8 @@ class SequenceDesigner:
         self._solutions_limit = solutions_limit
         return self
 
-    def run(self) -> "SequenceDesigner":
+    def run(self) -> RunContext:
+        self._score_function = self._score_function_builder.build()
         designer = ParetoOptimalDesign[str, str](
             self._sequence_length,
             self._score_function,
@@ -121,26 +131,20 @@ class SequenceDesigner:
         logger.info(
             f"Found {len(self._solutions)} Pareto-optimal sequences in {self._runtime}"
         )
-        return self
 
-    def export(self) -> "SequenceDesigner":
-        output_path = (
-            Path("designer_results")
-            / self._sequence_id
-            / self._motif_id
-            / self._fsm_id
-            / f"solutions_limit_{self._solutions_limit}"
-        )
         ctx = RunContext(
+            target_sequence_id=self._sequence_id,
             target_sequence=self._target_sequence,
             orfs=self._score_function.orfs,
             cost_params=self._score_function.params,
             motif_id=self._motif_id,
+            fsm_id=self._fsm_id,
             fsm_size=self._fsm_size,
             solutions_limit=self._solutions_limit,
             n_solutions=len(self._solutions),
             runtime=self._runtime,
-            output_path=output_path,
         )
+
         export_solutions(self._solutions, ctx, self._score_function, self._motif)
-        return self
+
+        return ctx

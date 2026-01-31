@@ -2,10 +2,6 @@ from pareto_designer.shared.func_cost.base_function import ScoreFunction
 
 
 class ExactMatchCostFunction(ScoreFunction):
-    required_fields = [
-        "_target_sequence",
-    ]
-
     def __init__(self, target_sequence: str):
         self._target_sequence = target_sequence
 

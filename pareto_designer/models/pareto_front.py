@@ -5,15 +5,26 @@ import numpy as np
 
 
 class RunContext(NamedTuple):
+    target_sequence_id: str
     target_sequence: str
     orfs: list[tuple[int, int]]
     cost_params: dict[str, float]
     motif_id: str
+    fsm_id: str
     fsm_size: int
     solutions_limit: int
     n_solutions: int
     runtime: str
-    output_path: Path
+
+    @property
+    def output_path(self) -> Path:
+        return (
+            Path("designer_results")
+            / self.target_sequence_id
+            / self.motif_id
+            / self.fsm_id
+            / f"solutions_limit_{self.solutions_limit}"
+        )
 
 
 class ParetoResult(NamedTuple):

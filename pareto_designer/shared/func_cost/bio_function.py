@@ -85,15 +85,6 @@ def calculate_cost(
 
 
 class BioCostFunction(ScoreFunction):
-    required_fields = [
-        "_target_sequence",
-        "_coding_positions",
-        "_codon_usage",
-        "_alpha",
-        "_beta",
-        "_w",
-    ]
-
     def __init__(
         self,
         target_sequence: str,

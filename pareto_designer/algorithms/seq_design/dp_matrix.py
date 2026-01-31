@@ -19,6 +19,7 @@ MAX_FILE_SIZE = 16 * (1024**2)  # 16MB
 
 
 def get_flush_every(fsm: FSM, limit_solutions: int) -> int:
+    limit_solutions = limit_solutions or 256
     row_size_in_bytes = len(fsm.V) * limit_solutions * ITEM_SIZE
     return int(MAX_FILE_SIZE / row_size_in_bytes)
 
@@ -47,6 +48,7 @@ class DP_Matrix:
             Path.home() / checkpoint_dir / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         )
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
+        self._avg_size_pareto_set_file = Path("designer_results") / f"{self.checkpoint_path.name}_avg_size_pareto_set.csv"
 
         self._alphabet = list(self.fsm.Sigma)
         self._sigma_to_idx: dict[T_CHAR, int] = {
@@ -167,7 +169,9 @@ class DP_Matrix:
 
         logger.debug(f"Finished filling row no. {i} / {self.n}")
 
-        total = sum(len(arr) for arr in self._temp_row_data if arr is not None)
+        sizes = [len(arr) if arr is not None else 0 for arr in self._temp_row_data]
+        self._report_row_size(i, sizes)
+        total = sum(sizes)
         curr_scores = np.empty(total, dtype=SCORE_DTYPE)
         curr_offsets = np.zeros(self._num_states + 1, dtype=np.int32)
         pos = 0
@@ -186,6 +190,26 @@ class DP_Matrix:
                 self._total_rows_flushed // self.flush_every
             )
             logger.info(f"Rows calculated: {i} / {self.n}")
+
+    def _report_row_size(self, i: int, sizes: list[int]):
+        sizes = np.array(sizes)
+        
+        data = {
+            "position": i,
+            "avg_size_pareto_set": np.mean(sizes),
+            "std_size_pareto_set": np.std(sizes),
+            "min_size_pareto_set": np.min(sizes),
+            "q1_size_pareto_set": np.percentile(sizes, 25),
+            "median_size_pareto_set": np.median(sizes),
+            "q3_size_pareto_set": np.percentile(sizes, 75),
+            "max_size_pareto_set": np.max(sizes)
+        }
+
+        with self._avg_size_pareto_set_file.open("at") as f:
+            if i == 0:
+                f.write(",".join(data.keys()) + "\n")
+            
+            f.write(",".join(f"{v:.3f}" if isinstance(v, (float, np.floating)) else str(v) for v in data.values()) + "\n")
 
     def get(self, v: T_STATE) -> np.ndarray:
         v_idx = self._get_state_index(v)

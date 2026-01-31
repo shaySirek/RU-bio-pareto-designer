@@ -93,5 +93,4 @@ def main():
                 seq_designer.with_target_sequence(seq_file, score_function_builder)
                 .with_solutions_limit(po_limit)
                 .run()
-                .export()
             )
