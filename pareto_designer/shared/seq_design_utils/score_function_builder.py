@@ -1,4 +1,7 @@
 from pathlib import Path
+import csv
+
+import numpy as np
 
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
@@ -11,7 +14,7 @@ class ScoreFunctionBuilder:
     def __init__(self):
         self._target_sequence: str = None
         self._is_exact_match_cost: bool = False
-        self._codon_usage: dict[str, float] = None
+        self._codon_usage_costs: dict[str, float] = None
         self._alpha: float = None
         self._beta: float = None
         self._w: float = None
@@ -28,8 +31,26 @@ class ScoreFunctionBuilder:
 
     def with_codon_usage(self, codon_usage_file: Path) -> "ScoreFunctionBuilder":
         if not self._is_exact_match_cost:
-            self._codon_usage = read_codon_usage(codon_usage_file)
+            codon_usage = read_codon_usage(codon_usage_file)
+            self._codon_usage_costs = self._get_codon_usage_costs(codon_usage)
+            with codon_usage_file.with_suffix(".costs.csv").open("w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Codon", "Cost"])
+                writer.writerows(
+                    [
+                        (codon, round(cost, 3))
+                        for codon, cost in self._codon_usage_costs.items()
+                    ]
+                )
+
         return self
+
+    @staticmethod
+    def _get_codon_usage_costs(codon_usage: dict[str, float]) -> dict[str, float]:
+        usage_values = np.array(list(codon_usage.values()))
+        min_usage = usage_values.min()
+        costs = np.log(usage_values) / np.log(min_usage)
+        return dict(zip(codon_usage.keys(), costs))
 
     def with_params(self, **kwargs) -> "ScoreFunctionBuilder":
         if not self._is_exact_match_cost:
@@ -46,7 +67,7 @@ class ScoreFunctionBuilder:
         return BioCostFunction(
             target_sequence,
             coding_positions,
-            self._codon_usage,
+            self._codon_usage_costs,
             self._alpha,
             self._beta,
             self._w,

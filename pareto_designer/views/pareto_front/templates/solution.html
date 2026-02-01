@@ -3,115 +3,78 @@
 <head>
     <title>Solution {{ res.id }}</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 40px; color: #333; line-height: 1.6; background-color: #fcfcfc; scroll-behavior: smooth; }
-        .container { max-width: 1000px; margin: auto; position: relative; }
-        .back-to-top-right { 
-            position: absolute; top: 0; right: 0; 
-            color: crimson; text-decoration: none; font-weight: bold; font-size: 0.9em;
-            padding: 8px 16px; border: 1.5px solid crimson; border-radius: 6px;
-            transition: 0.2s;
-        }
-        .back-to-top-right:hover { background: crimson; color: white; }
-        .header-box { background: #f8f9fa; border-left: 5px solid crimson; padding: 20px; border-radius: 4px; margin: 50px 0 30px 0; display: flex; justify-content: space-between; align-items: center; }
-        .btn-download { display: inline-block; padding: 6px 12px; background: #eee; color: #333; text-decoration: none; border-radius: 4px; font-size: 0.85em; border: 1px solid #ccc; }
-        .viz-wrapper { position: relative; margin: 40px 0; }
-        .orf-track { position: relative; width: 100%; height: 20px; margin-bottom: 4px; border-bottom: 1px solid #ddd; }
-        .orf-span { position: absolute; height: 12px; background: #e1f5fe; border-left: 2px solid #01579b; border-right: 2px solid #01579b; top: 4px; font-size: 10px; color: #01579b; display: flex; align-items: center; justify-content: center; }
-        .cost-bar { display: flex; width: 100%; height: 32px; background: #eee; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }
-        .cost-segment { flex: 1; height: 100%; text-decoration: none; display: block; }
-        .cost-segment:hover { transform: scaleY(1.3); z-index: 10; background: #333 !important; }
-        .seq-box { background: #272822; color: #f8f8f2; padding: 20px; border-radius: 5px; word-break: break-all; font-family: monospace; line-height: 2; letter-spacing: 2px; }
-        .subst { color: #f92672; font-weight: bold; background: #49483e; padding: 2px 1px; border-radius: 2px; }
-        .table-wrapper { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 40px;}
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th { background: #f2f2f2; position: sticky; top: 0; padding: 12px; }
-        td { padding: 12px; border-bottom: 1px solid #ddd; }
-        tr:target { background-color: #fff5f5; outline: 2px solid crimson; }
-        .solution-nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-top: 1px solid #eee; margin-top: 20px; }
-        .nav-link { text-decoration: none; color: #444; font-weight: bold; padding: 10px 20px; background: #fff; border: 1px solid #ddd; border-radius: 6px; transition: 0.2s; }
-        .nav-link:hover { border-color: crimson; color: crimson; background: #fffafa; }
-        .nav-link.disabled { color: #ccc; pointer-events: none; border-color: #eee; }
-        .hit-count { color: #e67e22; font-weight: bold; padding: 2px 6px; background: #fff4e6; border-radius: 4px; border: 1px solid #ffe8cc; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #333; background-color: #fcfcfc; }
+        .container { max-width: 1000px; margin: auto; }
+        .header-box { background: #f8f9fa; border-left: 5px solid crimson; padding: 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .highlight-orf { background-color: #e1f5fe; border-bottom: 2px solid #01579b; font-weight: 500; }
+        .seq-display { font-family: 'Consolas', monospace; word-break: break-all; background: white; padding: 20px; border: 1px solid #ddd; border-radius: 8px; line-height: 2.2; margin: 20px 0; }
+        .heatmap-container { margin: 30px 0; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+        .heatmap-container img { width: 100%; height: auto; display: block; }
+        .table-wrapper { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; background: white; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f2f2f2; position: sticky; top: 0; padding: 12px; text-align: left; z-index: 10; }
+        td { padding: 12px; border-bottom: 1px solid #ddd; font-family: 'Consolas', monospace; }
+        .codon-badge { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; letter-spacing: 1px; }
+        .subst-char { color: crimson; font-weight: bold; text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="index.html" class="back-to-top-right">&larr; Back to Pareto Front</a>
-        
+        <a href="index.html" style="text-decoration:none; color:crimson; font-weight:bold;">&larr; Back to Pareto Front</a>
         <h1>Solution Analysis: {{ res.id }}</h1>
 
         <div class="header-box">
             <div class="metrics">
-                <div><strong>Functional Cost:</strong> {{ "%.6f"|format(res.cost) }}</div>
-                <div><strong>Binding Score:</strong> {{ "%.6f"|format(res.binding_score) }}</div>
-                <div style="margin-top: 8px;"><strong>Motif Hits:</strong> <span class="hit-count">{{ res.n_motif_hits }} hits</span></div>
+                <strong>Cost:</strong> {{ "%.4f"|format(res.cost) }} | 
+                <strong>Binding:</strong> {{ "%.4f"|format(res.binding_score) }} | 
+                <strong>Substitutions:</strong> {{ cost_data|length }}
             </div>
             <div class="downloads">
-                <a href='{{ res.fasta_file }}' class="btn-download" download>.FASTA</a>
-                <a href='{{ res.txt_file }}' class="btn-download" download>.TXT</a>
+                <a href="{{ res.fasta_file }}" download style="color: crimson; font-weight: bold; text-decoration: none;">Download .FASTA</a>
             </div>
         </div>
 
-        <h3>Substitutions</h3>
-        <div class="viz-wrapper">
-            <div class="orf-track">
-                {% set seq_len = ctx.target_sequence | length %}
-                {% for start, end in ctx.orfs %}
-                    {% set left = (start / seq_len) * 100 %}{% set width = ((end - start) / seq_len) * 100 %}
-                    <div class="orf-span" style="left: {{ left }}%; width: {{ width }}%;">ORF</div>
-                {% endfor %}
-            </div>
-            {% set max_cost = res.costs | max %}
-            <div class="cost-bar">
-                {% for c in res.costs %}
-                    {% if c > 0 %}{% set alpha = (c / max_cost) * 0.85 + 0.15 %}
-                        <a href="#pos-{{ loop.index }}" class="cost-segment" style="background: rgba(220, 20, 60, {{ alpha }});"></a>
-                    {% else %}<div class="cost-segment" style="background: #f0f0f0;"></div>{% endif %}
-                {% endfor %}
-            </div>
+        <h3>Sequence View (ORFs Highlighted)</h3>
+        <div class="seq-display">
+            {%- for char, is_orf in seq_with_meta -%}
+                <span class="{{ 'highlight-orf' if is_orf else '' }}">{{ char }}</span>
+            {%- endfor -%}
         </div>
+
+        <div class="heatmap-container">
+            <img src="{{ res.id }}_heatmap.png" alt="Heatmap">
+        </div>
+
+        <h3>Substitutions</h3>
         
         <div class="table-wrapper">
             <table>
-                <thead><tr><th>Position</th><th>Mutation</th><th>Cost</th></tr></thead>
+                <thead><tr><th>Pos</th><th>Substitution</th><th>Codon Context</th><th>Cost</th></tr></thead>
                 <tbody>
-                    {% for pos, cost in cost_data %}
-                    <tr id="pos-{{ pos }}">
+                    {% for pos, cost, codon in cost_data %}
+                    <tr>
                         <td>{{ pos }}</td>
-                        <td>{{ ctx.target_sequence[pos-1] }} &rarr; <span style="color:crimson">{{ res.sequence[pos-1] }}</span></td>
+                        <td>{{ ctx.target_sequence[pos-1] }} &rarr; <b style="color:crimson">{{ res.sequence[pos-1] }}</b></td>
+                        <td>
+                            {% if codon %}
+                                <span class="codon-badge">
+                                    {%- for char in codon.sequence -%}
+                                        {%- if loop.index == codon.pos_in_codon -%}
+                                            <span class="subst-char">{{ char }}</span>
+                                        {%- else -%}
+                                            {{ char }}
+                                        {%- endif -%}
+                                    {%- endfor -%}
+                                </span>
+                            {% else %}
+                                <small style="color:#ccc">Non-ORF</small>
+                            {% endif %}
+                        </td>
                         <td>{{ "%.6f"|format(cost) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
-
-        <h3>Sequence Alignment</h3>
-        <div class="seq-box">
-            {% for t_char in ctx.target_sequence %}
-                {% set m_char = res.sequence[loop.index0] %}
-                {% if t_char != m_char %}<span class="subst">{{ m_char }}</span>{% else %}{{ t_char }}{% endif %}
-            {% endfor %}
-        </div>
-
-        <div class="solution-nav">
-            {% set current_id = res.id | int %}
-            
-            {% if current_id > 1 %}
-                {% set prev_formatted = "%03d"|format(current_id - 1) %}
-                <a href="{{ prev_formatted }}_details.html" class="nav-link">&larr; Previous (#{{ prev_formatted }})</a>
-            {% else %}
-                <span class="nav-link disabled">&larr;</span>
-            {% endif %}
-            
-            <span style="color: #999; font-size: 0.9em;">Solution {{ current_id }} / {{ ctx.n_solutions }}</span>
-
-            {% if current_id < ctx.n_solutions %}
-                {% set next_formatted = "%03d"|format(current_id + 1) %}
-                <a href="{{ next_formatted }}_details.html" class="nav-link">Next (#{{ next_formatted }}) &rarr;</a>
-            {% else %}
-                <span class="nav-link disabled">&rarr;</span>
-            {% endif %}
         </div>
     </div>
 </body>

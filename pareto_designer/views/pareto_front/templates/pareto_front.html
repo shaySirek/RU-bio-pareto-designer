@@ -53,7 +53,7 @@
                                 {%- set idx = loop.index0 -%}
                                 {%- set is_orf = namespace(active=false) -%}
                                 {%- for start, end in ctx.orfs -%}
-                                    {%- if idx >= start and idx < end -%}
+                                    {%- if idx + 1 >= start and idx + 1 <= end -%}
                                         {%- set is_orf.active = true -%}
                                     {%- endif -%}
                                 {%- endfor -%}
@@ -126,7 +126,7 @@
                 
                 <svg viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="xMidYMid meet">
                     <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14">Functional Cost</text>
-                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14" transform="rotate(-90,25,{{ (h+pt-pb)/2 }})">Binding Score</text>
+                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" font-weight="600" fill="#475569" font-size="14" transform="rotate(-90,15,{{ (h+pt-pb)/2 }})">Binding Score</text>
                     
                     {% for i in range(6) %}
                         {% set vy, py = min_y + (i*ry/5), (h-pb) - (i*(h-pb-pt)/5) %}

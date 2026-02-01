@@ -3,9 +3,8 @@ from functools import lru_cache
 
 from loguru import logger
 from jinja2 import Environment, FileSystemLoader
-import numpy as np
 
-from pareto_designer.models.pareto_front import RunContext, ParetoResult
+from pareto_designer.models.context import RunContext, ParetoResult
 
 
 @lru_cache
@@ -14,18 +13,30 @@ def _get_env():
     return Environment(loader=FileSystemLoader(template_dir))
 
 
-def render_solution_html(ctx: RunContext, res: ParetoResult):
+def render_solution_html(
+    ctx: RunContext,
+    res: ParetoResult,
+    substitutions: list[tuple[int, float, dict | None]],
+    seq_with_meta: list[tuple[str, bool]],
+):
     template = _get_env().get_template("solution.html")
-    non_zero = [(int(i + 1), float(res.costs[i])) for i in np.where(res.costs > 0)[0]]
-    html_out = template.render(ctx=ctx, res=res, cost_data=non_zero)
-    with (ctx.output_path / res.url).open("w") as f:
+
+    html_out = template.render(
+        ctx=ctx, res=res, cost_data=substitutions, seq_with_meta=seq_with_meta
+    )
+
+    output_file = ctx.output_path / res.url
+    with output_file.open("w", encoding="utf-8") as f:
         f.write(html_out)
 
 
-def render_pareto_front(ctx: RunContext, results: list[ParetoResult]):
+def render_pareto_front_html(ctx: RunContext, results: list[ParetoResult]):
     template = _get_env().get_template("pareto_front.html")
     filename = ctx.output_path / "index.html"
+
     html_out = template.render(ctx=ctx, results=results)
-    with filename.open("w") as f:
+
+    with filename.open("w", encoding="utf-8") as f:
         f.write(html_out)
+
     logger.info(f"Pareto front exported to {filename}")

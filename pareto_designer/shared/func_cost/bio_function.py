@@ -1,7 +1,5 @@
 import re
 
-import numpy as np
-
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.func_cost.amino_acid_utils import AminoAcidConfig
 
@@ -89,24 +87,17 @@ class BioCostFunction(ScoreFunction):
         self,
         target_sequence: str,
         coding_positions: list[int],
-        codon_usage: dict[str, float],
+        codon_usage_costs: dict[str, float],
         alpha: float,
         beta: float,
         w: float,
     ):
         self._target_sequence = target_sequence
         self._coding_positions = coding_positions
-        self._codon_usage_costs = self._get_codon_usage_costs(codon_usage)
+        self._codon_usage_costs = codon_usage_costs
         self._alpha = alpha
         self._beta = beta
         self._w = w
-
-    @staticmethod
-    def _get_codon_usage_costs(codon_usage: dict[str, float]) -> dict[str, float]:
-        usage_values = np.array(list(codon_usage.values()))
-        min_usage = usage_values.min()
-        costs = np.log(usage_values) / np.log(min_usage)
-        return dict(zip(codon_usage.keys(), costs))
 
     @property
     def target_sequence(self):
@@ -142,3 +133,7 @@ class BioCostFunction(ScoreFunction):
             "Non-synonymous codon": self._w,
             "Synonymous codon": "by codon usage",
         }
+
+    @property
+    def maximum(self) -> float:
+        return self._w + 3

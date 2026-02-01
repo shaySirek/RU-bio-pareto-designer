@@ -48,7 +48,10 @@ class DP_Matrix:
             Path.home() / checkpoint_dir / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         )
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
-        self._avg_size_pareto_set_file = Path("designer_results") / f"{self.checkpoint_path.name}_avg_size_pareto_set.csv"
+        self._avg_size_pareto_set_file = (
+            Path("designer_results")
+            / f"{self.checkpoint_path.name}_avg_size_pareto_set.csv"
+        )
 
         self._alphabet = list(self.fsm.Sigma)
         self._sigma_to_idx: dict[T_CHAR, int] = {
@@ -193,7 +196,7 @@ class DP_Matrix:
 
     def _report_row_size(self, i: int, sizes: list[int]):
         sizes = np.array(sizes)
-        
+
         data = {
             "position": i,
             "avg_size_pareto_set": np.mean(sizes),
@@ -202,14 +205,20 @@ class DP_Matrix:
             "q1_size_pareto_set": np.percentile(sizes, 25),
             "median_size_pareto_set": np.median(sizes),
             "q3_size_pareto_set": np.percentile(sizes, 75),
-            "max_size_pareto_set": np.max(sizes)
+            "max_size_pareto_set": np.max(sizes),
         }
 
         with self._avg_size_pareto_set_file.open("at") as f:
             if i == 0:
                 f.write(",".join(data.keys()) + "\n")
-            
-            f.write(",".join(f"{v:.3f}" if isinstance(v, (float, np.floating)) else str(v) for v in data.values()) + "\n")
+
+            f.write(
+                ",".join(
+                    f"{v:.3f}" if isinstance(v, (float, np.floating)) else str(v)
+                    for v in data.values()
+                )
+                + "\n"
+            )
 
     def get(self, v: T_STATE) -> np.ndarray:
         v_idx = self._get_state_index(v)
