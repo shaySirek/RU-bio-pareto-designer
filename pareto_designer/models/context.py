@@ -74,3 +74,7 @@ class DesignContext:
     score_function: ScoreFunction
     fsm_ctx: FSMContext
     run_ctx: RunContext
+
+    @property
+    def sequence_length(self) -> int:
+        return len(self.score_function.target_sequence)

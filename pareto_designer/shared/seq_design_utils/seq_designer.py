@@ -26,15 +26,18 @@ class SequenceDesigner:
         self, score_function_builder: ScoreFunctionBuilder
     ) -> "SequenceDesigner":
         self._score_function_builder = score_function_builder
+        self._score_function = None
         return self
 
     def with_target_sequence(self, sequence_file: Path) -> "SequenceDesigner":
         self._sequence_id = sequence_file.stem
         self._score_function_builder.with_target_sequence(sequence_file)
+        self._score_function = None
         return self
 
     def with_fsm_builder(self, fsm_builder: FSMBuilder) -> "SequenceDesigner":
         self._fsm_builder = fsm_builder
+        self._fsm_ctx = None
         return self
 
     def with_solutions_limit(self, solutions_limit: int) -> "SequenceDesigner":
@@ -42,8 +45,10 @@ class SequenceDesigner:
         return self
 
     def _build(self) -> DesignContext:
-        self._score_function = self._score_function_builder.build()
-        self._fsm_ctx = self._fsm_builder.build()
+        if not self._score_function:
+            self._score_function = self._score_function_builder.build()
+        if not self._fsm_ctx:
+            self._fsm_ctx = self._fsm_builder.build()
         run_ctx = RunContext(
             target_sequence_id=self._sequence_id,
             target_sequence=self._score_function.target_sequence,
@@ -59,33 +64,25 @@ class SequenceDesigner:
     def run(
         self, dry_run: bool = False
     ) -> tuple[list[tuple[str, T_SOLUTION]], DesignContext]:
-        design_ctx = self._build()
-        exporter = ParetoExporter(design_ctx)
+        ctx = self._build()
+        exporter = ParetoExporter(ctx)
 
         if dry_run:
             logger.info(f"Dry run: Loading results for {self._sequence_id}")
             exporter.load()
         else:
-            sequence_length = len(design_ctx.score_function.target_sequence)
-            designer = ParetoOptimalDesign[str, str](
-                sequence_length,
-                design_ctx.score_function,
-                design_ctx.fsm_ctx.fsm,
-                design_ctx.fsm_ctx.binding_score_map,
-                design_ctx.fsm_ctx.motif_length,
-                self._solutions_limit,
-            )
+            designer = ParetoOptimalDesign(ctx)
             logger.info(
                 f"Running algorithm on target sequence {self._sequence_id}"
                 f" and binding motif of {self._fsm_ctx.motif_id}"
-                f" [n={sequence_length}, |V|={self._fsm_ctx.size}, L={self._solutions_limit}]..."
+                f" [n={ctx.sequence_length}, |V|={self._fsm_ctx.size}, L={self._solutions_limit}]..."
             )
             solutions, duration = run_with_timing(designer.find_pareto_optimal)
             runtime = format_duration(int(duration))
             n_solutions = len(solutions)
             logger.info(f"Found {n_solutions} Pareto-optimal sequences in {runtime}")
-            design_ctx.run_ctx.runtime = runtime
-            design_ctx.run_ctx.n_solutions = n_solutions
+            ctx.run_ctx.runtime = runtime
+            ctx.run_ctx.n_solutions = n_solutions
 
             exporter.process_all(solutions)
             exporter.save()

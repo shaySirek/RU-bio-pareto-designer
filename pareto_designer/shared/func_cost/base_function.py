@@ -6,7 +6,7 @@ from pareto_designer.shared.consts import STATE_MINIMUM_COMMON_SUFFIX_LENGTH
 class ScoreFunction(ABC):
     @property
     @abstractmethod
-    def target_sequence(self):
+    def target_sequence(self) -> str:
         pass
 
     @abstractmethod
