@@ -30,7 +30,7 @@ class ParetoOptimalDesign:
         self._output_path = ctx.run_ctx.output_path
         self._find_po_func = partial(find_po_from_sorted_iters, limit=self._l)
         self._flush_every = get_flush_every(self._fsm, self._l)
-        self._n_pruned = None
+        self._pruned_sizes = None
         self._pareto_set_reporter = (
             ParetoSet(ctx.run_ctx.output_path) if self._l == 0 else None
         )
@@ -92,16 +92,17 @@ class ParetoOptimalDesign:
 
     def _start_row(self):
         self._dp_matrix.start_row()
-        self._n_pruned = 0
+        self._pruned_sizes = []
 
     def _end_row(self, i: int):
         sizes = self._dp_matrix.end_row(i)
         if self._pareto_set_reporter:
-            self._pareto_set_reporter.report_row_size(i, sizes, self._n_pruned)
+            self._pareto_set_reporter.report_row_size(i, sizes, self._pruned_sizes)
 
     def _get_sorted_scores_with_back_ptrs(
         self, i: int, v: T_STATE
     ) -> Generator[T_LAZY_SOL_ITER_FACTORY, None, None]:
+        n_pruned = 0
         b_0 = self._binding_score_map[v]
         for u, sigma in self._fsm.pred(v):
             dp_cell = self._dp_matrix.get(u)
@@ -110,7 +111,7 @@ class ParetoOptimalDesign:
 
             f_0 = self._score_function(i - 1, u, sigma)
             if f_0 == -float("inf"):
-                self._n_pruned += len(dp_cell)
+                n_pruned += len(dp_cell)
                 continue
 
             def sorted_scores_factory(
@@ -128,3 +129,5 @@ class ParetoOptimalDesign:
                     )
 
             yield sorted_scores_factory
+
+        self._pruned_sizes.append(n_pruned)

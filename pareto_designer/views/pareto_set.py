@@ -6,35 +6,50 @@ import matplotlib.pyplot as plt
 
 
 class ParetoSet:
+    _DATA_FILENAME = "pareto_set_size.csv"
+    _FIG_FILENAME = "pareto_growth.png"
+
+    _PARETO_PREFIX = "pareto_set_size"
+    _PRUNED_PREFIX = "pruned_size"
+
     def __init__(self, output_path: Path):
-        self._data_file = output_path / "pareto_set_size.csv"
-        self._growth_fig = output_path / "pareto_growth.png"
-        self._pruning_fig = output_path / "pareto_pruning.png"
-        self._first = True
+        self._data_file = output_path / self._DATA_FILENAME
+        self._fig_file = output_path / self._FIG_FILENAME
+        self._is_first_row = True
         output_path.mkdir(parents=True, exist_ok=True)
-        self._data_file.unlink(missing_ok=True)
 
-    def report_row_size(self, i: int, pareto_set_sizes: list[int], n_pruned: int):
-        mean_n_pruned = n_pruned / len(pareto_set_sizes)
-        arr = np.array(pareto_set_sizes)
-        mean_pareto = np.mean(arr)
+    @staticmethod
+    def _get_stats(arr: np.ndarray, prefix: str) -> dict[str, float]:
+        if arr.size == 0:
+            return {f"{k}_{prefix}": 0.0 for k in ["min", "q1", "median", "q3", "max"]}
 
-        data = {
-            "position": i,
-            "mean_pareto_set_size": mean_pareto,
-            "mean_pruned": mean_n_pruned,
-            "mean_pareto_and_pruned": mean_pareto + mean_n_pruned,
-            "min_pareto_set_size": np.min(arr),
-            "q1_pareto_set_size": np.percentile(arr, 25),
-            "median_pareto_set_size": np.median(arr),
-            "q3_pareto_set_size": np.percentile(arr, 75),
-            "max_pareto_set_size": np.max(arr),
+        return {
+            f"min_{prefix}": np.min(arr),
+            f"q1_{prefix}": np.percentile(arr, 25),
+            f"median_{prefix}": np.median(arr),
+            f"q3_{prefix}": np.percentile(arr, 75),
+            f"max_{prefix}": np.max(arr),
         }
 
-        with self._data_file.open("at") as f:
-            if self._first:
+    def report_row_size(
+        self,
+        i: int,
+        pareto_set_sizes: list[int],
+        pruned_sizes: list[int],
+    ):
+        po_sizes_arr = np.array(pareto_set_sizes)
+        pruned_sizes_arr = np.array(pruned_sizes)
+
+        data = {"position": i}
+        data.update(self._get_stats(po_sizes_arr, self._PARETO_PREFIX))
+        data.update(self._get_stats(pruned_sizes_arr, self._PRUNED_PREFIX))
+
+        mode = "wt" if self._is_first_row else "at"
+        with self._data_file.open(mode) as f:
+            if self._is_first_row:
                 f.write(",".join(data.keys()) + "\n")
-                self._first = False
+                self._is_first_row = False
+
             f.write(
                 ",".join(
                     f"{v:.3f}" if isinstance(v, (float, np.floating)) else str(v)
@@ -45,71 +60,45 @@ class ParetoSet:
 
     def plot(self):
         df = pd.read_csv(self._data_file)
-        self._plot_growth(df)
-        self._plot_pruning(df)
+        fig, ax = plt.subplots(figsize=(15, 6))
 
-    def _plot_growth(self, df):
-        fig, ax = plt.subplots(figsize=(10, 6))
         ax.fill_between(
             df["position"],
-            df["min_pareto_set_size"],
-            df["max_pareto_set_size"],
+            df[f"min_{self._PARETO_PREFIX}"],
+            df[f"max_{self._PARETO_PREFIX}"],
             color="gray",
             alpha=0.2,
             label="Range",
         )
         ax.fill_between(
             df["position"],
-            df["q1_pareto_set_size"],
-            df["q3_pareto_set_size"],
+            df[f"q1_{self._PARETO_PREFIX}"],
+            df[f"q3_{self._PARETO_PREFIX}"],
             color="blue",
             alpha=0.3,
             label="IQR",
         )
         ax.plot(
             df["position"],
-            df["median_pareto_set_size"],
+            df[f"median_{self._PARETO_PREFIX}"],
             color="red",
             ls="--",
+            lw=1.5,
             label="Median",
         )
-        ax.set_xlabel("Position ($i$)")
-        ax.set_ylabel("Pareto Set Size")
-        ax.legend()
-        plt.tight_layout()
-        fig.savefig(self._growth_fig, dpi=300, bbox_inches="tight")
-        plt.close(fig)
-
-    def _plot_pruning(self, df):
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        ax.plot(
-            df["position"],
-            df["mean_pareto_set_size"],
-            label="Pareto Set",
-            color="blue",
-            alpha=0.8,
-        )
-        ax.plot(
-            df["position"],
-            df["mean_pareto_and_pruned"],
-            label="Union",
-            ls=":",
-            color="black",
-        )
-        ax.scatter(
-            df["position"],
-            df["mean_pruned"],
-            label="Pruned Infinite Costs",
-            color="orange",
-            marker="x",
-            s=20,
-            alpha=0.6,
-        )
 
         ax.set_xlabel("Position ($i$)")
-        ax.set_ylabel("Mean Size")
-        ax.legend()
+        ax.set_ylabel("Size")
+        ax.legend(loc="upper left")
+
         plt.tight_layout()
-        fig.savefig(self._pruning_fig, dpi=300, bbox_inches="tight")
+        fig.savefig(self._fig_file, dpi=300, bbox_inches="tight")
         plt.close(fig)
+
+
+if __name__ == "__main__":
+
+    import sys
+
+    ps = ParetoSet(Path(sys.argv[1]))
+    ps.plot()
