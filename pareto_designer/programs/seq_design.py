@@ -42,8 +42,8 @@ def parse_args():
         "-l",
         type=int,
         nargs="+",
-        default=[64, 128],
-        help="Specifies the maximum number of Pareto-optimal sequences (default: 64, 128)",
+        default=[50, 100, 150],
+        help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 50, 100, 150)",
     )
     parser.add_argument(
         "--exact-match-cost",
@@ -53,7 +53,7 @@ def parse_args():
     parser.add_argument(
         "--codon-usage",
         type=Path,
-        help="Codon usage file for cost function",
+        help="Codon usage file for calculating synonymous substitution costs",
     )
     parser.add_argument(
         "-alpha",
