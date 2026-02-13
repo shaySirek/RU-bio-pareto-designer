@@ -25,9 +25,14 @@
 
         <div class="header-box">
             <div class="metrics">
-                <strong>Cost:</strong> {{ "%.4f"|format(res.cost) }} | 
-                <strong>Binding:</strong> {{ "%.4f"|format(res.binding_score) }} | 
-                <strong>Substitutions:</strong> {{ cost_data|length }}
+                <div>
+                    <strong>Cost:</strong> {{ "%.4f"|format(res.cost) }} | 
+                    <strong>Substitutions:</strong> {{ res.n_substitutions }}
+                </div>
+                <div>
+                    <strong>Binding:</strong> {{ "%.4f"|format(res.binding_score) }} | 
+                    <strong>Hits:</strong> {{ res.n_motif_hits }}
+                </div>
             </div>
             <div class="downloads">
                 <a href="{{ res.fasta_file }}" download style="color: crimson; font-weight: bold; text-decoration: none;">Download .FASTA</a>
@@ -49,25 +54,26 @@
         
         <div class="table-wrapper">
             <table>
-                <thead><tr><th>Pos</th><th>Substitution</th><th>Codon Context</th><th>Cost</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Position</th>
+                        <th>Substitution</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
                 <tbody>
                     {% for pos, cost, codon in cost_data %}
                     <tr>
                         <td>{{ pos }}</td>
-                        <td>{{ ctx.target_sequence[pos-1] }} &rarr; <b style="color:crimson">{{ res.sequence[pos-1] }}</b></td>
                         <td>
                             {% if codon %}
-                                <span class="codon-badge">
-                                    {%- for char in codon.sequence -%}
-                                        {%- if loop.index == codon.pos_in_codon -%}
-                                            <span class="subst-char">{{ char }}</span>
-                                        {%- else -%}
-                                            {{ char }}
-                                        {%- endif -%}
-                                    {%- endfor -%}
-                                </span>
+                                {{ ctx.target_sequence[codon.start : codon.start + 3] }} 
+                                &rarr; 
+                                <b>{{ res.sequence[codon.start : codon.start + 3] }}</b>
                             {% else %}
-                                <small style="color:#ccc">Non-ORF</small>
+                                {{ ctx.target_sequence[pos-1] }} 
+                                &rarr; 
+                                <b>{{ res.sequence[pos-1] }}</b>
                             {% endif %}
                         </td>
                         <td>{{ "%.6f"|format(cost) }}</td>

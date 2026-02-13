@@ -50,6 +50,7 @@ class ParetoExporter:
         sequence, (f_score, binding_score) = solution
         functional_cost = max(0.0, -f_score)
         costs = np.array(self.score_function.get_costs(sequence), dtype=float)
+        n_substitutions = int(np.count_nonzero(costs > 0))
 
         sol_base = self.ctx.output_path / f"{sol_id}_sequence"
         sol_fasta_file = sol_base.with_suffix(".fa")
@@ -66,6 +67,7 @@ class ParetoExporter:
             fasta_file=f"{sol_id}_sequence.fa",
             sequence=sequence,
             costs=costs,
+            n_substitutions=n_substitutions,
             n_motif_hits=n_hits,
         )
 
@@ -88,6 +90,7 @@ class ParetoExporter:
                     "binding_score": res.binding_score,
                     "sequence": res.sequence,
                     "costs": res.costs.tolist(),
+                    "n_substitutions": res.n_substitutions,
                     "n_motif_hits": res.n_motif_hits,
                 }
             )
@@ -117,6 +120,7 @@ class ParetoExporter:
                 fasta_file=f"{d['id']}_sequence.fa",
                 sequence=d["sequence"],
                 costs=np.array(d["costs"]),
+                n_substitutions=d["n_substitutions"],
                 n_motif_hits=d["n_motif_hits"],
             )
             self.results.append(res)
@@ -124,14 +128,13 @@ class ParetoExporter:
         self.results.sort(key=lambda x: x.id)
         self.ctx.n_solutions = len(self.results)
 
-    def _get_codon_context(self, res: ParetoResult, pos: int) -> Optional[dict]:
+    def _get_codon_context(self, pos: int) -> Optional[dict]:
         for start, end in self.ctx.orfs:
             if start <= pos <= end:
                 rel_pos = pos - start
                 codon_start = start + ((rel_pos // 3) * 3) - 1
                 return {
-                    "sequence": res.sequence[codon_start : codon_start + 3],
-                    "pos_in_codon": (rel_pos % 3) + 1,
+                    "start": codon_start,
                 }
         return None
 
@@ -146,7 +149,7 @@ class ParetoExporter:
             tasks = []
             for res in self.results:
                 substitutions = [
-                    (i + 1, cost, self._get_codon_context(res, i + 1))
+                    (i + 1, cost, self._get_codon_context(i + 1))
                     for i, cost in enumerate(res.costs)
                     if cost > 0
                 ]

@@ -136,4 +136,5 @@ class BioCostFunction(ScoreFunction):
 
     @property
     def maximum(self) -> float:
-        return self._w + 3
+        costs = (self._alpha, self._beta, self._w + 3)
+        return max(filter(lambda c: c != float("inf"), costs))

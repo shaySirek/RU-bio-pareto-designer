@@ -66,6 +66,7 @@ class ParetoResult:
     fasta_file: str
     sequence: str
     costs: np.ndarray
+    n_substitutions: int
     n_motif_hits: int
 
 
