@@ -67,7 +67,11 @@ class ParetoResult:
     sequence: str
     costs: np.ndarray
     n_substitutions: int
-    n_motif_hits: int
+    motif_hits: list[tuple[int, int]]
+
+    @property
+    def n_motif_hits(self) -> int:
+        return len(self.motif_hits)
 
 
 @dataclass

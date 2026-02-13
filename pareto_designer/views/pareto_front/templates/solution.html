@@ -3,24 +3,63 @@
 <head>
     <title>Solution {{ res.id }}</title>
     <style>
+        /* General Styles */
         body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #333; background-color: #fcfcfc; }
         .container { max-width: 1000px; margin: auto; }
-        .header-box { background: #f8f9fa; border-left: 5px solid crimson; padding: 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        
+        /* Links & Actions */
+        .link-action { 
+            text-decoration: none; 
+            color: crimson; 
+            font-weight: bold; 
+            transition: opacity 0.2s;
+        }
+        .link-action:hover { opacity: 0.8; }
+        
+        /* Layout Components */
+        .header-box { 
+            background: #f8f9fa; 
+            border-left: 5px solid crimson; 
+            padding: 20px; 
+            border-radius: 4px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 30px; 
+        }
+        
+        /* Sequence Display */
+        .seq-display { 
+            font-family: 'Consolas', monospace; 
+            word-break: break-all; 
+            background: white; 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            line-height: 2.2; 
+            margin: 20px 0; 
+        }
         .highlight-orf { background-color: #e1f5fe; border-bottom: 2px solid #01579b; font-weight: 500; }
-        .seq-display { font-family: 'Consolas', monospace; word-break: break-all; background: white; padding: 20px; border: 1px solid #ddd; border-radius: 8px; line-height: 2.2; margin: 20px 0; }
+        
+        /* Visuals */
         .heatmap-container { margin: 30px 0; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
         .heatmap-container img { width: 100%; height: auto; display: block; }
+        
+        /* Tables */
         .table-wrapper { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; background: white; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #f2f2f2; position: sticky; top: 0; padding: 12px; text-align: left; z-index: 10; }
         td { padding: 12px; border-bottom: 1px solid #ddd; font-family: 'Consolas', monospace; }
+        
+        /* Utility */
         .codon-badge { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; letter-spacing: 1px; }
         .subst-char { color: crimson; font-weight: bold; text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="index.html" style="text-decoration:none; color:crimson; font-weight:bold;">&larr; Back to Pareto Front</a>
+        <a href="index.html" class="link-action">&larr; Back to Pareto Front</a>
+        
         <h1>Solution Analysis: {{ res.id }}</h1>
 
         <div class="header-box">
@@ -35,7 +74,7 @@
                 </div>
             </div>
             <div class="downloads">
-                <a href="{{ res.fasta_file }}" download style="color: crimson; font-weight: bold; text-decoration: none;">Download .FASTA</a>
+                <a href="{{ res.fasta_file }}" download class="link-action">Download .FASTA</a>
             </div>
         </div>
 

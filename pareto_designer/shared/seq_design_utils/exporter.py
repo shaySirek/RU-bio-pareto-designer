@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 import numpy as np
 
 from pareto_designer.algorithms.seq_design.types import T_SOLUTION
-from pareto_designer.bio_fetcher.fimo import get_number_of_hits
+from pareto_designer.bio_fetcher.fimo import get_motif_hits
 from pareto_designer.bio_fetcher.paths import MOTIF_DIR
 from pareto_designer.models.context import ParetoResult, DesignContext
 from pareto_designer.shared.parsing import write_sequence
@@ -56,7 +56,7 @@ class ParetoExporter:
         sol_fasta_file = sol_base.with_suffix(".fa")
 
         write_sequence(sol_fasta_file, sequence, header=f"Solution {sol_id}")
-        n_hits = get_number_of_hits(sol_id, sol_fasta_file, self.motif, motif_file)
+        motif_hits = get_motif_hits(sol_id, sol_fasta_file, self.motif, motif_file)
 
         return ParetoResult(
             cost=float(functional_cost),
@@ -68,7 +68,7 @@ class ParetoExporter:
             sequence=sequence,
             costs=costs,
             n_substitutions=n_substitutions,
-            n_motif_hits=n_hits,
+            motif_hits=motif_hits,
         )
 
     def save(self):
@@ -91,7 +91,7 @@ class ParetoExporter:
                     "sequence": res.sequence,
                     "costs": res.costs.tolist(),
                     "n_substitutions": res.n_substitutions,
-                    "n_motif_hits": res.n_motif_hits,
+                    "motif_hits": res.motif_hits,
                 }
             )
 
@@ -121,7 +121,7 @@ class ParetoExporter:
                 sequence=d["sequence"],
                 costs=np.array(d["costs"]),
                 n_substitutions=d["n_substitutions"],
-                n_motif_hits=d["n_motif_hits"],
+                motif_hits=d["motif_hits"],
             )
             self.results.append(res)
 
@@ -138,6 +138,15 @@ class ParetoExporter:
                 }
         return None
 
+    def _get_seq_with_is_coding(self, res: ParetoResult) -> list[tuple[str, bool]]:
+        seq_with_meta = []
+        for i, char in enumerate(res.sequence):
+            pos = i + 1
+            is_orf = any(s <= pos <= e for s, e in self.ctx.orfs)
+            seq_with_meta.append((char, is_orf))
+
+        return seq_with_meta
+
     def render(self):
         if not self.results:
             return
@@ -153,12 +162,7 @@ class ParetoExporter:
                     for i, cost in enumerate(res.costs)
                     if cost > 0
                 ]
-
-                seq_with_meta = []
-                for i, char in enumerate(res.sequence):
-                    pos = i + 1
-                    is_orf = any(s <= pos <= e for s, e in self.ctx.orfs)
-                    seq_with_meta.append((char, is_orf))
+                seq_with_meta = self._get_seq_with_is_coding(res)
 
                 tasks.append(
                     executor.submit(

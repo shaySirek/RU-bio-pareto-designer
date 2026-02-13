@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.lines import Line2D
 import seaborn as sns
 
 from pareto_designer.models.context import RunContext, ParetoResult
@@ -8,12 +9,20 @@ from pareto_designer.models.context import RunContext, ParetoResult
 def render_pareto_front_png(ctx: RunContext, results: list[ParetoResult]):
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    groups = {
-        "0": ([r for r in results if r.n_motif_hits == 0], "#cbd5e0"),
-        "1": ([r for r in results if r.n_motif_hits == 1], "#d8b4fe"),
-        "2-5": ([r for r in results if 2 <= r.n_motif_hits <= 5], "#a855f7"),
-        "5+": ([r for r in results if r.n_motif_hits > 5], "#6b21a8"),
-    }
+    colors = {"0": "#cbd5e0", "1": "#d8b4fe", "2-5": "#a855f7", "5+": "#6b21a8"}
+    buckets = {key: [] for key in colors}
+    for r in results:
+        hits = r.n_motif_hits
+        if hits == 0:
+            buckets["0"].append(r)
+        elif hits == 1:
+            buckets["1"].append(r)
+        elif 2 <= hits <= 5:
+            buckets["2-5"].append(r)
+        else:
+            buckets["5+"].append(r)
+
+    groups = {key: (buckets[key], colors[key]) for key in colors}
 
     for label, (group_results, color) in groups.items():
         if not group_results:
@@ -64,20 +73,36 @@ def render_heatmap_png(ctx: RunContext, res: ParetoResult, max_cost: float):
         ax.axvspan(start - 0.5, end - 0.5, color="blue", alpha=0.1, zorder=0)
         ax.plot(
             [start - 0.5, end - 0.5],
-            [1.05, 1.05],
-            color="blue",
-            lw=3,
-            transform=ax.get_xaxis_transform(),
-            clip_on=False,
-        )
-        ax.plot(
-            [start - 0.5, end - 0.5],
             [-0.05, -0.05],
             color="blue",
             lw=3,
             transform=ax.get_xaxis_transform(),
             clip_on=False,
         )
+
+    for start, end in res.motif_hits:
+        ax.axvspan(start - 0.5, end - 0.5, color="blue", alpha=0.1, zorder=0)
+        ax.plot(
+            [start - 0.5, end - 0.5],
+            [1.05, 1.05],
+            color="darkblue",
+            lw=3,
+            transform=ax.get_xaxis_transform(),
+            clip_on=False,
+        )
+
+    legend_elements = [
+        Line2D([0], [0], color="blue", lw=3, label="ORF", alpha=1.0),
+        Line2D([0], [0], color="darkblue", lw=3, label="Motif Hits", alpha=1.0),
+    ]
+    ax.legend(
+        handles=legend_elements,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.8),
+        ncol=2,
+        frameon=False,
+        fontsize="small",
+    )
 
     ax.set_axis_off()
 

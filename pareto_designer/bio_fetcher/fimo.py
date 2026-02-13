@@ -36,13 +36,13 @@ def find_hits_in_region(
     return outdir, hits
 
 
-def get_number_of_hits(
+def get_motif_hits(
     seq_id: str,
     seq_fasta_file: Path,
     motif: BindingMotif,
     motif_file: Path,
     pval: float = 2e-3,
-) -> int:
+) -> list[tuple[int, int]]:
     outdir = FIMO_DIR / motif.matrix_id / seq_id
     hits = _run_fimo(
         motif_file,
@@ -50,8 +50,10 @@ def get_number_of_hits(
         pval,
         outdir,
     )
+    motif_hits = [(int(hit["start"]), int(hit["stop"])) for _, hit in hits.iterrows()]
+    shutil.rmtree(outdir)
 
-    return len(hits)
+    return motif_hits
 
 
 def _run_fimo(
