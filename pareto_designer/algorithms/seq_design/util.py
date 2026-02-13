@@ -1,5 +1,7 @@
 import heapq
 from typing import Iterable, Generator, Iterator, Any
+from collections import defaultdict
+from operator import itemgetter
 
 import numpy as np
 
@@ -58,46 +60,84 @@ def merge_sorted(
 def find_po(
     sorted_candidates: Iterable[T_SOL_WITH_TRACK],
     limit: int = 0,
+    alpha: float = 2.0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
     """
-    Finds a representative sample of Pareto-optimal tuples using NumPy masking
-    and vectorization for high performance and diversity.
+    Finds a representative sample of Pareto-optimal tuples using biased
+    quantile-based pruning.
+
+    This function processes a set of candidates already sorted by their
+    primary objective. It first identifies the non-dominated set (Pareto
+    frontier) and then prunes it to a maximum of `limit` solutions.
+
+    The pruning utilizes a power-law distribution to select representatives,
+    allowing for non-uniform sampling density across the frontier.
+
+    Args:
+        sorted_candidates: An iterable of (score, metadata) tuples,
+            pre-sorted by the primary objective (index 0 of the score).
+        limit: The maximum number of non-dominated solutions to retain
+            (K). If 0, all non-dominated solutions are returned.
+        alpha: The bias parameter for quantile selection.
+            - alpha = 1.0: Uniform sampling (linear quantiles).
+            - alpha > 1.0: Biased sampling favoring lower values of the
+              primary objective (higher resolution at the 'start' of the
+              frontier).
+            - alpha < 1.0: Biased sampling favoring the secondary objective.
+
+    Returns:
+        A tuple containing:
+            - po_scores: A list of non-dominated score tuples.
+            - po_objs: A list of lists, where each sub-list contains all
+              metadata objects (tracking info) associated with that score.
+
+    Notes:
+        The pruning mechanism maintains structural diversity by ensuring
+        extreme points (anchors) are preserved, while the power-law bias
+        concentrates computational budget on preferred trade-off regions.
     """
-    po_scores: list[T_SOLUTION] = []
-    po_objs: list[list[Any]] = []
 
     candidates = list(sorted_candidates)
-    if not candidates:
-        return po_scores, po_objs
+    if len(candidates) == 0:
+        return [], []
 
-    scores_array = np.array([c[0] for c in candidates])
-    props = [c[1] for c in candidates]
+    scores_array = np.fromiter(
+        map(itemgetter(0), candidates), dtype=np.dtype((float, 2))
+    )
+    score_props = defaultdict(list)
+    for score, prop in candidates:
+        score_props[score].append(prop)
+
     b_values = scores_array[:, 1]
-
     running_min_b = np.minimum.accumulate(b_values)
     mask = np.concatenate(([True], b_values[1:] < running_min_b[:-1]))
 
     po_indices = np.where(mask)[0]
-    total_found = len(po_indices)
+    final_indices = sample(po_indices, limit, alpha)
 
-    num_to_keep = min(total_found, limit) if limit > 0 else total_found
-    if num_to_keep > 1:
-        sample_indices = np.round(np.linspace(0, total_found - 1, num_to_keep)).astype(
-            int
-        )
-        final_indices = po_indices[sample_indices]
-    else:
-        final_indices = po_indices[:num_to_keep]
+    po_scores: list[T_SOLUTION] = []
+    po_objs: list[list[Any]] = []
 
     for idx in final_indices:
-        target_score = scores_array[idx]
-        match_mask = np.all(scores_array == target_score, axis=1)
-        matches = [props[i] for i in np.where(match_mask)[0]]
-
-        po_scores.append(tuple(target_score))
-        po_objs.append(matches)
+        target_score = tuple(scores_array[idx])
+        po_scores.append(target_score)
+        po_objs.append(score_props[target_score])
 
     return po_scores, po_objs
+
+
+def sample(indices: np.ndarray, k: int, alpha: float):
+    n = len(indices)
+
+    # Unbounded or less than bound (k)
+    if k == 0 or n <= k:
+        return indices
+
+    j = np.linspace(0, 1, k)
+    sample_indices = np.round(np.power(j, alpha) * (n - 1)).astype(int)
+    final_indices = indices[np.unique(sample_indices)]
+
+    return final_indices
 
 
 def find_po_from_sorted_iters(
