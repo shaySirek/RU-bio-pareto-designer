@@ -6,6 +6,7 @@ import numpy as np
 from pareto_designer.models.motif import BindingMotif
 from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
+from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 
 
 @dataclass
@@ -41,7 +42,7 @@ class RunContext:
     motif_id: str
     fsm_id: str
     fsm_size: int
-    solutions_limit: int
+    sampler: SamplingMethod
     n_solutions: int = 0
     runtime: str = ""
 
@@ -52,7 +53,8 @@ class RunContext:
             / self.target_sequence_id
             / self.motif_id
             / self.fsm_id
-            / f"solutions_limit_{self.solutions_limit}"
+            / type(self.sampler).__name__
+            / str(self.sampler.k)
         )
 
 

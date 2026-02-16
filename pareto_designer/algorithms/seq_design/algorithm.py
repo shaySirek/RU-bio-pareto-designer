@@ -26,13 +26,19 @@ class ParetoOptimalDesign:
         self._binding_score_map = ctx.fsm_ctx.binding_score_map
         self._n = ctx.sequence_length
         self._m = ctx.fsm_ctx.motif_length
-        self._l = ctx.run_ctx.solutions_limit
+        self._sampler = ctx.run_ctx.sampler
         self._output_path = ctx.run_ctx.output_path
-        self._find_po_func = partial(find_po_from_sorted_iters, limit=self._l)
-        self._flush_every = get_flush_every(self._fsm, self._l)
+
+        # find Pareto-optimal solutions with sampling
+        self._find_po_func = partial(find_po_from_sorted_iters, sampler=self._sampler)
+
+        # interval to flush the cells of the DP matrix
+        self._flush_every = get_flush_every(self._fsm, self._sampler.k)
+
+        # tracking sizes for unbounded setting (no sampling)
         self._pruned_sizes = None
         self._pareto_set_reporter = (
-            ParetoSet(ctx.run_ctx.output_path) if self._l == 0 else None
+            ParetoSet(ctx.run_ctx.output_path) if self._sampler.k == 0 else None
         )
 
         logger.remove()

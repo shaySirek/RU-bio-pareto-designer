@@ -9,6 +9,7 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
     ScoreFunctionBuilder,
 )
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
+from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.models.context import RunContext, FSMContext, DesignContext
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 
@@ -20,7 +21,7 @@ class SequenceDesigner:
         self._score_function: ScoreFunction = None
         self._fsm_builder: FSMBuilder = None
         self._fsm_ctx: FSMContext = None
-        self._solutions_limit: int = 0  # 0 -> unbounded
+        self._sampler: SamplingMethod = None
 
     def with_score_function_builder(
         self, score_function_builder: ScoreFunctionBuilder
@@ -40,8 +41,8 @@ class SequenceDesigner:
         self._fsm_ctx = None
         return self
 
-    def with_solutions_limit(self, solutions_limit: int) -> "SequenceDesigner":
-        self._solutions_limit = solutions_limit
+    def with_sampler(self, sampler: SamplingMethod) -> "SequenceDesigner":
+        self._sampler = sampler
         return self
 
     def _build(self) -> DesignContext:
@@ -56,8 +57,8 @@ class SequenceDesigner:
             cost_params=self._score_function.params,
             motif_id=self._fsm_ctx.motif_id,
             fsm_id=self._fsm_ctx.fsm_id,
+            sampler=self._sampler,
             fsm_size=self._fsm_ctx.size,
-            solutions_limit=self._solutions_limit,
         )
         return DesignContext(self._score_function, self._fsm_ctx, run_ctx)
 
@@ -75,7 +76,7 @@ class SequenceDesigner:
             logger.info(
                 f"Running algorithm on target sequence {self._sequence_id}"
                 f" and binding motif of {self._fsm_ctx.motif_id}"
-                f" [n={ctx.sequence_length}, |V|={self._fsm_ctx.size}, L={self._solutions_limit}]..."
+                f" [n={ctx.sequence_length}, |V|={self._fsm_ctx.size}, K={ctx.run_ctx.sampler.k}]..."
             )
             solutions, duration = run_with_timing(designer.find_pareto_optimal)
             runtime = format_duration(int(duration))

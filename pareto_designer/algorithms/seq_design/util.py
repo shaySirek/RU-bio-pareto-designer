@@ -11,6 +11,7 @@ from pareto_designer.algorithms.seq_design.types import (
     T_LAZY_SOL_ITER_FACTORY,
     CompareFunc,
 )
+from pareto_designer.algorithms.seq_design.sampling import SamplingMethod, SUS
 
 
 def default_compare(a: T_SOL_WITH_TRACK, b: T_SOL_WITH_TRACK) -> bool:
@@ -59,44 +60,21 @@ def merge_sorted(
 
 def find_po(
     sorted_candidates: Iterable[T_SOL_WITH_TRACK],
-    limit: int = 0,
-    alpha: float = 2.0,
+    sampler: SamplingMethod = SUS(0, 1.0),
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
     """
-    Finds a representative sample of Pareto-optimal tuples using biased
-    quantile-based pruning.
-
-    This function processes a set of candidates already sorted by their
-    primary objective. It first identifies the non-dominated set (Pareto
-    frontier) and then prunes it to a maximum of `limit` solutions.
-
-    The pruning utilizes a power-law distribution to select representatives,
-    allowing for non-uniform sampling density across the frontier.
+    Identifies the Pareto-optimal frontier from a set of candidates and
+    applies sampling.
 
     Args:
         sorted_candidates: An iterable of (score, metadata) tuples,
-            pre-sorted by the primary objective (index 0 of the score).
-        limit: The maximum number of non-dominated solutions to retain
-            (K). If 0, all non-dominated solutions are returned.
-        alpha: The bias parameter for quantile selection.
-            - alpha = 1.0: Uniform sampling (linear quantiles).
-            - alpha > 1.0: Biased sampling favoring lower values of the
-              primary objective (higher resolution at the 'start' of the
-              frontier).
-            - alpha < 1.0: Biased sampling favoring the secondary objective.
+            pre-sorted by the primary objective (cost).
+        sampler: The sampling precedure (Defaults to no sampling).
 
     Returns:
-        A tuple containing:
-            - po_scores: A list of non-dominated score tuples.
-            - po_objs: A list of lists, where each sub-list contains all
-              metadata objects (tracking info) associated with that score.
-
-    Notes:
-        The pruning mechanism maintains structural diversity by ensuring
-        extreme points (anchors) are preserved, while the power-law bias
-        concentrates computational budget on preferred trade-off regions.
+        A tuple containing a list of non-dominated score tuples and a
+        list of associated metadata lists for each score.
     """
-
     candidates = list(sorted_candidates)
     if len(candidates) == 0:
         return [], []
@@ -111,37 +89,22 @@ def find_po(
     b_values = scores_array[:, 1]
     running_min_b = np.minimum.accumulate(b_values)
     mask = np.concatenate(([True], b_values[1:] < running_min_b[:-1]))
-
     po_indices = np.where(mask)[0]
-    final_indices = sample(po_indices, limit, alpha)
+    sampled_po_scores = sampler(scores_array, po_indices)
 
     po_scores: list[T_SOLUTION] = []
     po_objs: list[list[Any]] = []
 
-    for idx in final_indices:
-        target_score = tuple(scores_array[idx])
+    for score in sampled_po_scores:
+        target_score = tuple(score)
         po_scores.append(target_score)
         po_objs.append(score_props[target_score])
 
     return po_scores, po_objs
 
 
-def sample(indices: np.ndarray, k: int, alpha: float):
-    n = len(indices)
-
-    # Unbounded or less than bound (k)
-    if k == 0 or n <= k:
-        return indices
-
-    j = np.linspace(0, 1, k)
-    sample_indices = np.round(np.power(j, alpha) * (n - 1)).astype(int)
-    final_indices = indices[np.unique(sample_indices)]
-
-    return final_indices
-
-
 def find_po_from_sorted_iters(
     sorted_scores_iters_factories: Iterable[T_LAZY_SOL_ITER_FACTORY],
-    limit: int = 0,
+    sampler: SamplingMethod = SUS(0, 1.0),  # no sampling
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
-    return find_po(merge_sorted(sorted_scores_iters_factories), limit)
+    return find_po(merge_sorted(sorted_scores_iters_factories), sampler)

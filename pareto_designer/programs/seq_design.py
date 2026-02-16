@@ -8,6 +8,7 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
 )
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigner
+from pareto_designer.algorithms.seq_design.sampling import SUS
 
 
 def parse_args():
@@ -38,12 +39,19 @@ def parse_args():
         help="Specifies the percentage of reduction in size of the FSM of the binding motif (default is 0.875)",
     )
     parser.add_argument(
-        "--limit-solutions",
-        "-l",
+        "--budgets",
+        "-k",
         type=int,
         nargs="+",
-        default=[50, 100, 150],
-        help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 50, 100, 150)",
+        default=[150, 200, 250],
+        help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 150, 200, 250)",
+    )
+    parser.add_argument(
+        "--temperature",
+        "-t",
+        type=float,
+        default=50.0,
+        help="Specifies the scaling factor for the exponent (given to SUS) to control selection pressure (default: 50.0)",
     )
     parser.add_argument(
         "--exact-match-cost",
@@ -70,8 +78,8 @@ def parse_args():
     parser.add_argument(
         "-w",
         type=float,
-        default=100.0,
-        help="Specifies the value for non-synonymous substitution cost (default is 100.0)",
+        default=500.0,
+        help="Specifies the value for non-synonymous substitution cost (default is 500.0)",
     )
     return parser.parse_args()
 
@@ -99,9 +107,9 @@ def main():
     )
 
     for seq_file in seq_files:
-        for po_limit in args.limit_solutions:
+        for k in args.budgets:
             (
                 seq_designer.with_target_sequence(seq_file)
-                .with_solutions_limit(po_limit)
+                .with_sampler(SUS(k, args.temperature))
                 .run(dry_run=args.dry_run)
             )
