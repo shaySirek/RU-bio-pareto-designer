@@ -47,13 +47,6 @@ def parse_args():
         help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 150, 200, 250)",
     )
     parser.add_argument(
-        "--temperature",
-        "-t",
-        type=float,
-        default=50.0,
-        help="Specifies the scaling factor for the exponent (given to SUS) to control selection pressure (default: 50.0)",
-    )
-    parser.add_argument(
         "--exact-match-cost",
         action="store_true",
         help="Use the exact match dummy cost function",
@@ -110,6 +103,6 @@ def main():
         for k in args.budgets:
             (
                 seq_designer.with_target_sequence(seq_file)
-                .with_sampler(SUS(k, args.temperature))
+                .with_sampler(SUS(k))
                 .run(dry_run=args.dry_run)
             )

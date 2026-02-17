@@ -11,7 +11,7 @@ from pareto_designer.algorithms.seq_design.types import (
     T_LAZY_SOL_ITER_FACTORY,
     CompareFunc,
 )
-from pareto_designer.algorithms.seq_design.sampling import SamplingMethod, SUS
+from pareto_designer.algorithms.seq_design.sampling import SamplingMethod, NO_SAMPLING
 
 
 def default_compare(a: T_SOL_WITH_TRACK, b: T_SOL_WITH_TRACK) -> bool:
@@ -60,7 +60,8 @@ def merge_sorted(
 
 def find_po(
     sorted_candidates: Iterable[T_SOL_WITH_TRACK],
-    sampler: SamplingMethod = SUS(0, 1.0),
+    sampler: SamplingMethod = NO_SAMPLING,
+    position: int = 0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
     """
     Identifies the Pareto-optimal frontier from a set of candidates and
@@ -70,6 +71,7 @@ def find_po(
         sorted_candidates: An iterable of (score, metadata) tuples,
             pre-sorted by the primary objective (cost).
         sampler: The sampling precedure (Defaults to no sampling).
+        position: The position in the sequence, used in SUS.
 
     Returns:
         A tuple containing a list of non-dominated score tuples and a
@@ -90,7 +92,7 @@ def find_po(
     running_min_b = np.minimum.accumulate(b_values)
     mask = np.concatenate(([True], b_values[1:] < running_min_b[:-1]))
     po_indices = np.where(mask)[0]
-    sampled_po_scores = sampler(scores_array, po_indices)
+    sampled_po_scores = sampler(scores_array, po_indices, position)
 
     po_scores: list[T_SOLUTION] = []
     po_objs: list[list[Any]] = []
@@ -105,6 +107,7 @@ def find_po(
 
 def find_po_from_sorted_iters(
     sorted_scores_iters_factories: Iterable[T_LAZY_SOL_ITER_FACTORY],
-    sampler: SamplingMethod = SUS(0, 1.0),  # no sampling
+    sampler: SamplingMethod = NO_SAMPLING,
+    position: int = 0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
-    return find_po(merge_sorted(sorted_scores_iters_factories), sampler)
+    return find_po(merge_sorted(sorted_scores_iters_factories), sampler, position)

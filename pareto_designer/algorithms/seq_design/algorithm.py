@@ -29,9 +29,6 @@ class ParetoOptimalDesign:
         self._sampler = ctx.run_ctx.sampler
         self._output_path = ctx.run_ctx.output_path
 
-        # find Pareto-optimal solutions with sampling
-        self._find_po_func = partial(find_po_from_sorted_iters, sampler=self._sampler)
-
         # interval to flush the cells of the DP matrix
         self._flush_every = get_flush_every(self._fsm, self._sampler.k)
 
@@ -58,7 +55,11 @@ class ParetoOptimalDesign:
                 threading.Thread(target=self._pareto_set_reporter.plot).start()
 
             logger.info("Reconstructing Pareto-optimal solutions...")
-            self._po_set = self._dp_matrix.reconstruct_po_set(self._find_po_func)
+            self._po_set = self._dp_matrix.reconstruct_po_set(
+                partial(
+                    find_po_from_sorted_iters, sampler=self._sampler, position=self._n
+                )
+            )
 
         return self._po_set
 
@@ -89,8 +90,10 @@ class ParetoOptimalDesign:
         for i in range(self._m, self._n + 1):
             self._start_row()
             for v in self._fsm.V:
-                sorted_po_scores, sorted_back_ptrs = self._find_po_func(
-                    self._get_sorted_scores_with_back_ptrs(i, v)
+                sorted_po_scores, sorted_back_ptrs = find_po_from_sorted_iters(
+                    self._get_sorted_scores_with_back_ptrs(i, v),
+                    sampler=self._sampler,
+                    position=i,
                 )
                 self._dp_matrix.update(v, sorted_po_scores, sorted_back_ptrs)
 

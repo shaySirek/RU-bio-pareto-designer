@@ -8,34 +8,38 @@ import numpy as np
 class SamplingMethod(Protocol):
     k: int
 
-    def __call__(self, scores: np.ndarray, indices: np.ndarray) -> np.ndarray: ...
+    @property
+    def params(self) -> str:
+        return f"k_{self.k}"
+
+    def __call__(
+        self, scores: np.ndarray, indices: np.ndarray, position: int
+    ) -> np.ndarray: ...
 
 
 @dataclass
 class SUS(SamplingMethod):
     """
-    Stochastic Universal Sampling (SUS) with selection weights proportional to exp(f_scores).
+    Stochastic Universal Sampling (SUS) with fitness values
+    proportional to the average functional score per bp.
 
     Args:
         k: The number of solutions to sample.
-        temperature: Scaling factor for the exponent to control selection pressure.
     """
 
-    temperature: float
+    def __call__(
+        self, scores: np.ndarray, indices: np.ndarray, position: int
+    ) -> np.ndarray:
+        return self._sus(scores[indices], position)
 
-    def __call__(self, scores: np.ndarray, indices: np.ndarray) -> np.ndarray:
-        return self._sus(scores[indices])
-
-    def _sus(self, scores: np.ndarray):
+    def _sus(self, scores: np.ndarray, position: int):
         n = len(scores)
         # Unbounded or less than bound (k)
         if self.k == 0 or n <= self.k:
             return scores
 
-        # Weights are proportional to e^f
-        # Shifted by max(f) for numerical stability
-        f_scores = scores[:, 0]
-        weights = np.exp((f_scores - np.max(f_scores)) / self.temperature)
+        # Weights proportional to average functional score per bp
+        weights = np.exp(scores[:, 0] / position)
 
         # Stochastic Universal Sampling (SUS)
         cum_weights = np.cumsum(weights)
@@ -50,6 +54,9 @@ class SUS(SamplingMethod):
         unique_indices = np.unique(sampled_indices)
 
         return scores[unique_indices]
+
+
+NO_SAMPLING: SamplingMethod = SUS(0)
 
 
 @dataclass
@@ -67,7 +74,17 @@ class RankedPowerLawSampling(SamplingMethod):
     alphas: tuple[float, ...]
     ratios: tuple[float, ...]
 
-    def __call__(self, scores: np.ndarray, indices: np.ndarray) -> np.ndarray:
+    @property
+    def params(self) -> str:
+        return f"k_{self.k}__alphas_{self.alphas}__ratios_{self.ratios}"
+
+    def __call__(
+        self, scores: np.ndarray, indices: np.ndarray, position: int
+    ) -> np.ndarray:
+        sampled_indices = self._rank_based_sampler(indices)
+        return scores[sampled_indices]
+
+    def _rank_based_sampler(self, indices: np.ndarray) -> np.ndarray:
         n = len(indices)
         # Unbounded or less than bound (k)
         if self.k == 0 or n <= self.k:
@@ -81,7 +98,7 @@ class RankedPowerLawSampling(SamplingMethod):
             final_idx_set.update(indices[np.unique(rank_indices)])
 
         sampled_indices = np.sort(np.array(list(final_idx_set)))[: self.k]
-        return scores[sampled_indices]
+        return sampled_indices
 
     @classmethod
     def get_sampler(

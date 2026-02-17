@@ -54,7 +54,7 @@ class RunContext:
             / self.motif_id
             / self.fsm_id
             / type(self.sampler).__name__
-            / str(self.sampler.k)
+            / self.sampler.params
         )
 
 
