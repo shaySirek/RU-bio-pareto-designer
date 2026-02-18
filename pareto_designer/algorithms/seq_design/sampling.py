@@ -25,7 +25,14 @@ class SUS(SamplingMethod):
 
     Args:
         k: The number of solutions to sample.
+        alpha: Scaling factor for average functional scores.
     """
+
+    alpha: float
+
+    @property
+    def params(self) -> str:
+        return f"k_{self.k}__alpha_{self.alpha}"
 
     def __call__(
         self, scores: np.ndarray, indices: np.ndarray, position: int
@@ -39,7 +46,8 @@ class SUS(SamplingMethod):
             return scores
 
         # Weights proportional to average functional score per bp
-        weights = np.exp(scores[:, 0] / position)
+        avg_fscores = scores[:, 0] / position
+        weights = np.exp(avg_fscores * self.alpha)
 
         # Stochastic Universal Sampling (SUS)
         cum_weights = np.cumsum(weights)
@@ -56,7 +64,7 @@ class SUS(SamplingMethod):
         return scores[unique_indices]
 
 
-NO_SAMPLING: SamplingMethod = SUS(0)
+NO_SAMPLING: SamplingMethod = SUS(0, 1.0)
 
 
 @dataclass

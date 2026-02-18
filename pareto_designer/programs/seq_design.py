@@ -47,6 +47,13 @@ def parse_args():
         help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 150, 200, 250)",
     )
     parser.add_argument(
+        "--sampler-alpha",
+        type=float,
+        nargs="+",
+        default=[1.0, 0.5, 0.2, 0.1],
+        help="Specifies the scaling factor for functional costs in the sampler (default: 1.0, 0.5, 0.2, 0.1)",
+    )
+    parser.add_argument(
         "--exact-match-cost",
         action="store_true",
         help="Use the exact match dummy cost function",
@@ -101,8 +108,9 @@ def main():
 
     for seq_file in seq_files:
         for k in args.budgets:
-            (
-                seq_designer.with_target_sequence(seq_file)
-                .with_sampler(SUS(k))
-                .run(dry_run=args.dry_run)
-            )
+            for alpha in args.sampler_alpha:
+                (
+                    seq_designer.with_target_sequence(seq_file)
+                    .with_sampler(SUS(k, alpha))
+                    .run(dry_run=args.dry_run)
+                )

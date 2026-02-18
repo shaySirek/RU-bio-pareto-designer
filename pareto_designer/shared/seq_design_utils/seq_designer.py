@@ -76,6 +76,7 @@ class SequenceDesigner:
             logger.info(
                 f"Running algorithm on target sequence {self._sequence_id}"
                 f" and binding motif of {self._fsm_ctx.motif_id}"
+                f" with sampler {ctx.run_ctx.sampler}"
                 f" [n={ctx.sequence_length}, |V|={self._fsm_ctx.size}, K={ctx.run_ctx.sampler.k}]..."
             )
             solutions, duration = run_with_timing(designer.find_pareto_optimal)
