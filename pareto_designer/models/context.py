@@ -47,10 +47,21 @@ class RunContext:
     runtime: str = ""
 
     @property
+    def cost_params_str(self) -> str:
+        return "__".join(
+            [
+                f"{_norm_key(k)}_{p:.2f}"
+                for k, p in self.cost_params.items()
+                if isinstance(p, float)
+            ]
+        )
+
+    @property
     def output_path(self) -> Path:
         return (
             Path("designer_results")
             / self.target_sequence_id
+            / self.cost_params_str
             / self.motif_id
             / self.fsm_id
             / type(self.sampler).__name__
@@ -85,3 +96,7 @@ class DesignContext:
     @property
     def sequence_length(self) -> int:
         return len(self.score_function.target_sequence)
+
+
+def _norm_key(k: str) -> str:
+    return k.split(" ")[0].lower().replace("-", "_")
