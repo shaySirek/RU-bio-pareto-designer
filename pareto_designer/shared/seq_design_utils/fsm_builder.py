@@ -5,7 +5,7 @@ from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
     DB_FSM_Reducer,
 )
-from pareto_designer.models.motif import BindingMotif
+from pareto_designer.models.motif import BindingMotif, StrandForBindingScore
 from pareto_designer.models.context import FSMContext
 from pareto_designer.shared.fsm_utils.fsm_factory import get_binding_motif_fsm
 from pareto_designer.shared.fsm_utils.reduced_fsms_generator import get_reduced_fsms
@@ -14,6 +14,7 @@ from pareto_designer.shared.fsm_utils.reduced_fsms_generator import get_reduced_
 class FSMBuilder:
     def __init__(self):
         self._matrix_id: str = None
+        self._strand: StrandForBindingScore = StrandForBindingScore.Double
         self._delta_mse_threshold: float = None
         self._reduction_ratio_threshold: float = None
         self._motif: BindingMotif = None
@@ -43,7 +44,7 @@ class FSMBuilder:
             raise ValueError("Cannot build FSM: motif is not set.")
 
         self._motif, self._fsm, self._binding_score_map = get_binding_motif_fsm(
-            self._matrix_id
+            self._matrix_id, self._strand
         )
         self._fsm_id = "db_fsm"
         self._reduce_fsm()

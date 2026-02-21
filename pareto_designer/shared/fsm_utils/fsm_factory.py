@@ -10,7 +10,9 @@ from pareto_designer.algorithms.fsm import FSM, ColoredFSM
 
 
 def get_binding_motif_fsm(
-    matrix_id: str, **kwargs
+    matrix_id: str,
+    strand: StrandForBindingScore = StrandForBindingScore.Forward,
+    **kwargs,
 ) -> tuple[BindingMotif, FSM, dict[str, float]]:
     motif_ctx = BindingMotif(matrix_id, **kwargs)
 
@@ -18,7 +20,7 @@ def get_binding_motif_fsm(
     db_fsm: FSM = FSM[str, str].de_bruijn_fsm(set(motif_ctx.alphabet), motif_ctx.length)
 
     logger.info("Calculating binding scores from PSSM...")
-    binding_score_map = motif_ctx.get_binding_score_map()
+    binding_score_map = motif_ctx.get_binding_score_map(strand)
 
     return (motif_ctx, db_fsm, binding_score_map)
 
