@@ -237,6 +237,8 @@ def plot_scores_scatter(
     for x, y in pms_lines:
         ax.plot(x, y, color="red", linestyle="--", linewidth=0.5)
 
+    ax.set_xlabel("Origin Score", fontsize=12)
+    ax.set_ylabel("Score in Irreducible FSM", fontsize=12)
     # ax.set_xlim(min_score, max_score)
     # ax.set_ylim(min_score, max_score)
 

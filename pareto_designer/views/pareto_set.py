@@ -60,7 +60,7 @@ class ParetoSet:
 
     def plot(self):
         df = pd.read_csv(self._data_file)
-        fig, ax = plt.subplots(figsize=(15, 6))
+        fig, ax = plt.subplots(figsize=(9, 4))
 
         ax.fill_between(
             df["position"],
@@ -87,8 +87,9 @@ class ParetoSet:
             label="Median",
         )
 
-        ax.set_xlabel("Position ($i$)")
-        ax.set_ylabel("Size")
+        ax.set_xlabel("Position ($i$)", fontsize=12)
+        ax.set_ylabel("Size", fontsize=12)
+        ax.set_ylim(0, 900)
         ax.legend(loc="upper left")
 
         plt.tight_layout()

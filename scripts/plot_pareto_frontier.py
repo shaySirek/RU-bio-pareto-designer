@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 def render_pareto_front_png(results: list[dict], fig_file: Path):
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(9, 4))
 
     colors = {"0": "#cbd5e0", "1": "#d8b4fe", "2-5": "#a855f7", "5+": "#6b21a8"}
     buckets = {key: [] for key in colors}
@@ -39,8 +39,10 @@ def render_pareto_front_png(results: list[dict], fig_file: Path):
             s=60,
         )
 
-    ax.set_xlabel("Functional Cost")
-    ax.set_ylabel("Binding Score")
+    ax.set_xlabel("Functional Cost", fontsize=12)
+    ax.set_ylabel("Binding Score", fontsize=12)
+    ax.set_xlim(0, 500)
+    ax.set_ylim(-21000, -14000)
     ax.legend(title="Motif Hits", loc="upper right")
 
     fig.savefig(
@@ -67,7 +69,7 @@ def main():
         highest_cost = float(results[-1]["cost"])
 
     print(f"Plot {len(results)} solutions")
-    render_pareto_front_png(results, results_path / "pareto_frontier_no_exterme.png")
+    render_pareto_front_png(results, results_path / "pareto_optimal_solutions.png")
 
 
 if __name__ == "__main__":
