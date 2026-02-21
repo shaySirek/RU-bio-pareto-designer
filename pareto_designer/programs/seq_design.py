@@ -8,7 +8,7 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
 )
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigner
-from pareto_designer.algorithms.seq_design.sampling import SUS
+from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
 
 
 def parse_args():
@@ -43,15 +43,15 @@ def parse_args():
         "-k",
         type=int,
         nargs="+",
-        default=[150, 200, 250],
-        help="Specifies the maximum number of Pareto-optimal scores in each cell of the DP matrix (default: 150, 200, 250)",
+        default=[50, 150, 250],
+        help="Specifies the maximum number of non-dominated scores in each cell of the DP matrix (default: 50, 150, 250)",
     )
     parser.add_argument(
         "--sampler-alpha",
         type=float,
         nargs="+",
-        default=[1.0, 0.5, 0.2, 0.1],
-        help="Specifies the scaling factor for functional costs in the sampler (default: 1.0, 0.5, 0.2, 0.1)",
+        default=[1.0, 0.7, 0.5],
+        help="Specifies the exponent for Power-Law weighting of functional costs (default: 1.0, 0.7, 0.5)",
     )
     parser.add_argument(
         "--exact-match-cost",
@@ -66,14 +66,14 @@ def parse_args():
     parser.add_argument(
         "-alpha",
         type=float,
-        default=1.0,
-        help="Specifies the value for transition substitution cost (default is 1.0)",
+        default=0.5,
+        help="Specifies the value for transition substitution cost (default is 0.5)",
     )
     parser.add_argument(
         "-beta",
         type=float,
-        default=2.0,
-        help="Specifies the value for transversion substitution cost (default is 2.0)",
+        default=1.0,
+        help="Specifies the value for transversion substitution cost (default is 1.0)",
     )
     parser.add_argument(
         "-w",
@@ -111,6 +111,6 @@ def main():
             for alpha in args.sampler_alpha:
                 (
                     seq_designer.with_target_sequence(seq_file)
-                    .with_sampler(SUS(k, alpha))
+                    .with_sampler(PowerLawSUS(k, alpha))
                     .run(dry_run=args.dry_run)
                 )

@@ -18,14 +18,14 @@ class SamplingMethod(Protocol):
 
 
 @dataclass
-class SUS(SamplingMethod):
+class PowerLawSUS(SamplingMethod):
     """
-    Stochastic Universal Sampling (SUS) with fitness values
-    proportional to the average functional score per bp.
+    Stochastic Universal Sampling (SUS) with fitness values calculated by
+    applying the Power-Law distribution on the average functional cost per bp.
 
     Args:
         k: The number of solutions to sample.
-        alpha: Scaling factor for average functional scores.
+        alpha: Exponent for the Power-Law weighting.
     """
 
     alpha: float
@@ -37,34 +37,29 @@ class SUS(SamplingMethod):
     def __call__(
         self, scores: np.ndarray, indices: np.ndarray, position: int
     ) -> np.ndarray:
-        return self._sus(scores[indices], position)
+        return self._sample(scores[indices], position)
 
-    def _sus(self, scores: np.ndarray, position: int):
+    def _sample(self, scores: np.ndarray, position: int) -> np.ndarray:
         n = len(scores)
         # Unbounded or less than bound (k)
         if self.k == 0 or n <= self.k:
             return scores
 
-        # Weights proportional to average functional score per bp
-        avg_fscores = scores[:, 0] / position
-        weights = np.exp(avg_fscores * self.alpha)
+        avg_costs = -scores[:, 0] / position
+        weights = np.power(avg_costs + 1, -self.alpha)
 
         # Stochastic Universal Sampling (SUS)
         cum_weights = np.cumsum(weights)
         total_w = cum_weights[-1]
-
-        # Create equidistant pointers to ensure proportional representation
         step = total_w / self.k
         pointers = np.random.uniform(0, step) + np.arange(self.k) * step
-
-        # Vectorized binary search for pointer placement
         sampled_indices = np.searchsorted(cum_weights, pointers)
         unique_indices = np.unique(sampled_indices)
 
         return scores[unique_indices]
 
 
-NO_SAMPLING: SamplingMethod = SUS(0, 1.0)
+NO_SAMPLING: SamplingMethod = PowerLawSUS(0, 1.0)
 
 
 @dataclass
@@ -89,10 +84,10 @@ class RankedPowerLawSampling(SamplingMethod):
     def __call__(
         self, scores: np.ndarray, indices: np.ndarray, position: int
     ) -> np.ndarray:
-        sampled_indices = self._rank_based_sampler(indices)
+        sampled_indices = self._sample(indices)
         return scores[sampled_indices]
 
-    def _rank_based_sampler(self, indices: np.ndarray) -> np.ndarray:
+    def _sample(self, indices: np.ndarray) -> np.ndarray:
         n = len(indices)
         # Unbounded or less than bound (k)
         if self.k == 0 or n <= self.k:
