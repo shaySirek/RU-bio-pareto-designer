@@ -2,6 +2,7 @@ import json
 import argparse
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
 from loguru import logger
 import numpy as np
@@ -16,6 +17,13 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
 from pareto_designer.bio_fetcher.motif import BindingMotif
 
 
+class SequencePlotData(NamedTuple):
+    sequence: str
+    costs: np.ndarray | None
+    binding_data: np.ndarray
+    hits: list[tuple[int, int]]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Plot Pareto-optimal solutions for multiple result folders."
@@ -27,7 +35,7 @@ def parse_args() -> argparse.Namespace:
         default=["k_50__alpha_0.7", "k_150__alpha_0.7", "k_250__alpha_0.7"],
     )
     parser.add_argument("--matrix-id", "-m", type=str, default="MA0267.1")
-    parser.add_argument("--hit-threshold", type=float, default=4.7)
+    parser.add_argument("--hit-threshold", type=float, default=4.8)
     parser.add_argument(
         "--codon-usage",
         type=Path,
@@ -55,8 +63,10 @@ def get_global_bounds(
 
 
 def calc_seq_data(
-    args: argparse.Namespace, target_path: Path, solutions: dict[str, Path]
-) -> tuple[dict[str, tuple[np.ndarray | None, np.ndarray]], list[tuple[int, int]]]:
+    args: argparse.Namespace,
+    target_path: Path,
+    solutions: dict[str, Path],
+) -> tuple[dict[str, SequencePlotData], list[tuple[int, int]]]:
     score_function = (
         ScoreFunctionBuilder()
         .with_codon_usage(args.codon_usage)
@@ -67,30 +77,44 @@ def calc_seq_data(
     motif = BindingMotif(args.matrix_id)
     binding_map = motif.get_binding_score_map()
     seq_data = {}
+
     for sid, path in solutions.items():
         seq = read_sequence(path)
-        seq_data[sid] = (
-            np.array(score_function.get_costs(seq), dtype=float),
-            get_binding_data(seq, binding_map, motif.length),
+        seq_data[sid] = SequencePlotData(
+            sequence=seq,
+            costs=np.array(score_function.get_costs(seq), dtype=float),
+            **get_binding_data(seq, binding_map, motif.length, args.hit_threshold),
         )
-    seq_data["target"] = (
-        None,
-        get_binding_data(score_function.target_sequence, binding_map, motif.length),
+
+    target_seq = score_function.target_sequence
+    seq_data["target"] = SequencePlotData(
+        sequence=target_seq,
+        costs=None,
+        **get_binding_data(target_seq, binding_map, motif.length, args.hit_threshold),
     )
     return seq_data, score_function.orfs
 
 
 def get_binding_data(
-    seq: str, binding_score_map: dict[str, float], m: int
-) -> np.ndarray:
+    seq: str,
+    binding_score_map: dict[str, float],
+    m: int,
+    hit_threshold: float,
+):
     data = np.full(len(seq), np.nan)
+    hits = []
     for i in range(len(seq) - m + 1):
         data[i] = binding_score_map[seq[i : i + m]]
-    return data
+        if data[i] > hit_threshold:
+            hits.append((i, i + m - 1))
+    return dict(binding_data=data, hits=hits)
 
 
 def plot_solutions(
-    results: list[dict], fig_file: Path, x_lim: tuple[int, int], y_lim: tuple[int, int]
+    results: list[dict],
+    fig_file: Path,
+    x_lim: tuple[int, int],
+    y_lim: tuple[int, int],
 ) -> dict:
     min_hits = min(len(r["motif_hits"]) for r in results)
     configs = (
@@ -163,48 +187,52 @@ def plot_solutions(
 
 def plot_heapmap(
     orfs: list[tuple[int, int]],
-    costs: np.ndarray | None,
-    binding_data: np.ndarray,
-    motif_hits: list[tuple[int, int]],
+    data: SequencePlotData,
+    binding_score_heapmap_range: tuple[float, float],
     fig_file: Path,
 ) -> None:
-    width = min(max(10, len(binding_data) * 0.02), 40)
+    width = min(max(10, len(data.binding_data) * 0.02), 40)
+    has_costs = data.costs is not None
+
     fig, axes = plt.subplots(
-        2 if costs is not None else 1,
+        2 if has_costs else 1,
         1,
-        figsize=(width, 2.0 if costs is not None else 1.0),
+        figsize=(width, 2.0 if has_costs else 1.0),
         sharex=True,
     )
-    if costs is not None:
-        fig.subplots_adjust(hspace=0.1)
-    ax_cost, ax_binding = (axes[0], axes[1]) if costs is not None else (None, axes)
 
-    if costs is not None:
+    if has_costs:
+        fig.subplots_adjust(hspace=0.1)
+        ax_cost, ax_binding = axes[0], axes[1]
+
         sns.heatmap(
-            costs.reshape(1, -1),
+            data.costs.reshape(1, -1),
             cmap="Reds",
-            norm=mcolors.SymLogNorm(1.0, 1.0, 0, np.nanmax(costs), 10),
+            norm=mcolors.Normalize(0.0, 1.0),
             cbar=False,
             xticklabels=False,
             yticklabels=False,
             ax=ax_cost,
         )
+        axs = [ax_cost, ax_binding]
+    else:
+        ax_binding = axes
+        axs = [ax_binding]
 
     sns.heatmap(
-        binding_data.reshape(1, -1),
-        cmap="YlGnBu",
-        norm=mcolors.Normalize(
-            0, np.nanmax(binding_data) if not np.all(np.isnan(binding_data)) else 1
-        ),
+        data.binding_data.reshape(1, -1),
+        cmap="Purples",
+        norm=mcolors.Normalize(*binding_score_heapmap_range),
         cbar=False,
         xticklabels=False,
         yticklabels=False,
         ax=ax_binding,
     )
 
-    hit_mask = np.full(len(binding_data), np.nan)
-    for start, end in motif_hits:
+    hit_mask = np.full(len(data.binding_data), np.nan)
+    for start, end in data.hits:
         hit_mask[start:end] = 1
+
     if not np.all(np.isnan(hit_mask)):
         sns.heatmap(
             hit_mask.reshape(1, -1),
@@ -216,15 +244,18 @@ def plot_heapmap(
             zorder=3,
         )
 
-    axs = [ax_cost, ax_binding] if costs is not None else [ax_binding]
+    seq_len = len(data.binding_data)
+    ticks = np.arange(0, seq_len, 100)
+    ax_binding.set_xticks(ticks + 0.5)
+    ax_binding.set_xticklabels(ticks, fontsize=12)
 
     for s, e in orfs:
         for ax in axs:
-            ax.axvspan(s - 0.5, e - 0.5, color="blue", alpha=0.1, zorder=0)
+            ax.axvspan(s - 0.5, e - 0.5, color="darkblue", alpha=0.1, zorder=0)
         ax_binding.plot(
             [s - 0.5, e - 0.5],
-            [-0.1, -0.1],
-            color="blue",
+            [-0.4, -0.4],
+            color="darkblue",
             lw=4,
             transform=ax_binding.get_xaxis_transform(),
             clip_on=False,
@@ -232,7 +263,6 @@ def plot_heapmap(
 
     fig.savefig(fig_file, dpi=300, bbox_inches="tight")
     plt.close(fig)
-
     logger.success(f"Heatmap rendered: {fig_file}")
 
 
@@ -251,7 +281,6 @@ def main() -> None:
 
     x_lim, y_lim = get_global_bounds(sets)
     solution_files: dict[str, Path] = {}
-    solution_hits: dict[str, list[tuple[int, int]]] = {}
     with ThreadPoolExecutor() as exe:
         futs = [
             (
@@ -270,22 +299,17 @@ def main() -> None:
             star = future.result()
             sid = star["id"]
             solution_files[sid] = folder / f"{sid}_sequence.txt"
-            solution_hits[sid] = star["motif_hits"]
 
     seq_data, orfs = calc_seq_data(args, target, solution_files)
-    for sid, (costs, binding_data) in seq_data.items():
-        if sid == "target":
-            out = root / "target_sequence_binding.png"
-            hits = []
-            for i, score in enumerate(binding_data):
-                if score > args.hit_threshold:
-                    hits.append((i, i+6))
-        else:
-            out = solution_files[sid].with_suffix(".png")
-            hits = solution_hits[sid]
-        
-        logger.info(f"{len(hits)} hits in {sid}")
-        plot_heapmap(orfs, costs, binding_data, hits, out)
+    binding_score_heapmap_range = (-args.hit_threshold, 0.95 * args.hit_threshold)
+    for sid, data in seq_data.items():
+        out = (
+            root / "target_sequence_binding.png"
+            if sid == "target"
+            else solution_files[sid].with_suffix(".png")
+        )
+        logger.info(f"{len(data.hits)} hits in {sid}")
+        plot_heapmap(orfs, data, binding_score_heapmap_range, out)
 
 
 if __name__ == "__main__":
