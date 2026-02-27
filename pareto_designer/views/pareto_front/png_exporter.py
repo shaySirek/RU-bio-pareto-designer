@@ -9,7 +9,7 @@ from pareto_designer.models.context import RunContext, ParetoResult
 def render_pareto_front_png(ctx: RunContext, results: list[ParetoResult]):
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    colors = {"0": "#cbd5e0", "1": "#d8b4fe", "2-5": "#a855f7", "5+": "#6b21a8"}
+    colors = {"0": "#cbd5e0", "1": "#d8b4fe", "2-5": "#a855f7", "6+": "#6b21a8"}
     buckets = {key: [] for key in colors}
     for r in results:
         hits = r.n_motif_hits
@@ -20,7 +20,7 @@ def render_pareto_front_png(ctx: RunContext, results: list[ParetoResult]):
         elif 2 <= hits <= 5:
             buckets["2-5"].append(r)
         else:
-            buckets["5+"].append(r)
+            buckets["6+"].append(r)
 
     groups = {key: (buckets[key], colors[key]) for key in colors}
 
