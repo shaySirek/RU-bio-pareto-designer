@@ -16,6 +16,10 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
 )
 from pareto_designer.bio_fetcher.motif import BindingMotif
 
+FUNC_CMAP = "Reds"
+FUNC_RANGE = (0.0, 1.0)
+BINDING_CMAP = "Purples"
+
 
 class SequencePlotData(NamedTuple):
     sequence: str
@@ -192,43 +196,43 @@ def plot_heapmap(
     fig_file: Path,
 ) -> None:
     width = min(max(10, len(data.binding_data) * 0.02), 40)
-    has_costs = data.costs is not None
 
-    fig, axes = plt.subplots(
-        2 if has_costs else 1,
-        1,
-        figsize=(width, 2.0 if has_costs else 1.0),
-        sharex=True,
-    )
-
-    if has_costs:
+    if data.costs is not None:
+        fig, axes = plt.subplots(2, 1, figsize=(width, 2.0), sharex=True)
         fig.subplots_adjust(hspace=0.1)
         ax_cost, ax_binding = axes[0], axes[1]
-
         sns.heatmap(
             data.costs.reshape(1, -1),
-            cmap="Reds",
-            norm=mcolors.Normalize(0.0, 1.0),
+            cmap=FUNC_CMAP,
+            norm=mcolors.Normalize(*FUNC_RANGE),
             cbar=False,
             xticklabels=False,
             yticklabels=False,
             ax=ax_cost,
         )
-        axs = [ax_cost, ax_binding]
     else:
+        fig, axes = plt.subplots(1, 1, figsize=(width, 1.0), sharex=True)
         ax_binding = axes
-        axs = [ax_binding]
+        for s, e in orfs:
+            ax_binding.axvspan(s - 0.5, e - 0.5, color="darkblue", alpha=0.1, zorder=0)
+            ax_binding.plot(
+                [s - 0.5, e - 0.5],
+                [-0.4, -0.4],
+                color="darkblue",
+                lw=4,
+                transform=ax_binding.get_xaxis_transform(),
+                clip_on=False,
+            )
 
     sns.heatmap(
         data.binding_data.reshape(1, -1),
-        cmap="Purples",
+        cmap=BINDING_CMAP,
         norm=mcolors.Normalize(*binding_score_heapmap_range),
         cbar=False,
         xticklabels=False,
         yticklabels=False,
         ax=ax_binding,
     )
-
     hit_mask = np.full(len(data.binding_data), np.nan)
     for start, end in data.hits:
         hit_mask[start:end] = 1
@@ -249,21 +253,30 @@ def plot_heapmap(
     ax_binding.set_xticks(ticks + 0.5)
     ax_binding.set_xticklabels(ticks, fontsize=12)
 
-    for s, e in orfs:
-        for ax in axs:
-            ax.axvspan(s - 0.5, e - 0.5, color="darkblue", alpha=0.1, zorder=0)
-        ax_binding.plot(
-            [s - 0.5, e - 0.5],
-            [-0.4, -0.4],
-            color="darkblue",
-            lw=4,
-            transform=ax_binding.get_xaxis_transform(),
-            clip_on=False,
-        )
-
     fig.savefig(fig_file, dpi=300, bbox_inches="tight")
     plt.close(fig)
     logger.success(f"Heatmap rendered: {fig_file}")
+
+
+def export_colorbars(bars: dict[str, tuple[str, tuple[float, float]]], out_file: Path):
+    n = len(bars)
+    fig, axes = plt.subplots(1, n, figsize=(4 * n, 0.5), squeeze=False)
+
+    i = 0
+    for name, (cmap_name, norm_range) in bars.items():
+        ax = axes[0, i]
+        norm = mcolors.Normalize(vmin=norm_range[0], vmax=norm_range[1])
+        fig.colorbar(
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap_name),
+            cax=ax,
+            orientation="horizontal",
+        )
+        ax.set_title(name, fontsize=10, pad=5)
+        i += 1
+
+    fig.savefig(out_file, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    logger.success(f"Heatmap legend rendered: {out_file}")
 
 
 def main() -> None:
@@ -301,7 +314,17 @@ def main() -> None:
             solution_files[sid] = folder / f"{sid}_sequence.txt"
 
     seq_data, orfs = calc_seq_data(args, target, solution_files)
-    binding_score_heapmap_range = (-args.hit_threshold, 0.95 * args.hit_threshold)
+    binding_score_heapmap_range: tuple[float, float] = (
+        -args.hit_threshold,
+        0.95 * args.hit_threshold,
+    )
+    export_colorbars(
+        {
+            "Functional cost": (FUNC_CMAP, FUNC_RANGE),
+            "Binding score": (BINDING_CMAP, binding_score_heapmap_range),
+        },
+        root / "heatmap_legend.png",
+    )
     for sid, data in seq_data.items():
         out = (
             root / "target_sequence_binding.png"
