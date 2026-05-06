@@ -18,6 +18,7 @@ from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.shared.plot import (
     plot_state_reduction_processes_across_strands,
     plot_motifs_reductions_scatter,
+    plot_motifs_reductions_hists,
 )
 
 
@@ -108,4 +109,9 @@ def main():
     plot_motifs_reductions_scatter(
         stats_per_motif_len,
         str(out_folder / "stranded"),
+    )
+
+    plot_motifs_reductions_hists(
+        stats_per_motif_len,
+        str(Path("experiments") / "stranded"),
     )

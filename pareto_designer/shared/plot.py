@@ -396,6 +396,38 @@ def plot_motifs_reductions_scatter(
         plt.close(fig)
 
 
+def plot_motifs_reductions_hists(
+    stats_per_motif_len: dict[int, list[dict[StrandForBindingScore, float]]],
+    out_folder: str,
+):
+    for strand in (
+        StrandForBindingScore.Forward,
+        StrandForBindingScore.Backward,
+        StrandForBindingScore.Double,
+    ):
+        effs = [
+            strands_effs[strand]
+            for stats in stats_per_motif_len.values()
+            for strands_effs in stats
+        ]
+
+        filename = os.path.join(
+            out_folder,
+            f"{strand.value}_strand_reduction_efficiencies_hist.png",
+        )
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        fig, ax = plt.subplots(figsize=(5, 4))
+        ax.hist(effs, bins=20, color="steelblue", alpha=0.7)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel(f"{strand.value} strand reduction efficiency")
+        ax.set_ylabel("# Motifs")
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        fig.savefig(filename, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+
 def plot_state_reduction_processes_across_strands(
     motif_ctx: BindingMotif,
     strand_mse_by_n_states: dict[StrandForBindingScore, dict[int, float]],
