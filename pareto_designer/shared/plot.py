@@ -305,17 +305,13 @@ def plot_state_reduction_process_cmp_colored(
     os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(5, 4))
-    pow2_mask = (series_colorless_n_states & (series_colorless_n_states - 1)) == 0
-    mask = pow2_mask & (
-        series_colorless_n_states >= (1 << motif_ctx.length)
-    )  # >= sqrt(4^m) = 2^m
     ax.scatter(
-        series_colorless_n_states[mask],
-        series_colorless_mse_series[mask],
+        series_colorless_n_states,
+        series_colorless_mse_series,
         color="black",
     )
     ax.set_xlabel("# States")
-    ax.set_xscale("log", base=2)
+    ax.set_xscale("log", base=4)
     ax.set_ylabel("MSE")
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
