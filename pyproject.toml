@@ -27,6 +27,7 @@ seaborn = "^0.13.2"
 # Main Programs
 design-seq = "pareto_designer.programs.seq_design:main"
 score-binding = "pareto_designer.programs.binding_scorer:main"
+reduce-fsm = "pareto_designer.programs.fsm_reduction:main"
 
 # FSM Reduction Experiments
 fsm-colored-exp = "pareto_designer.programs.fsm_reduction_experiments.colored_fsm_reduction_exp:main"
