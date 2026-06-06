@@ -19,6 +19,7 @@ from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
 )
 from pareto_designer.algorithms.fsm_reduction.util import get_reduction_efficiency
 from pareto_designer.algorithms.fsm import FSM, ColoredFSM
+from pareto_designer.algorithms.spaces import LinearSpace
 from pareto_designer.shared.plot import (
     plot_histogram,
     plot_elbow_and_hist,
@@ -284,16 +285,18 @@ def run_colorless_reduction(
     vis_at: set[int],
     out_folder: str,
 ):
+    db_fsm_size = len(db_fsm.V)
     matrix_id = motif_ctx.matrix_id
     fsm_reducer = DB_FSM_Reducer[str, str](
-        db_fsm, binding_score_map, matrix_id, validate=validate
+        db_fsm, binding_score_map, LinearSpace, matrix_id, validate=validate
     )
     fsms_iter = fsm_reducer.find_reduced_fsms()
 
     mse_by_n_states: dict[int, float] = {}
     min_n_states_by_mse: dict[float, int] = {}
-    for reduced_fsm, mse, (_, _, reduced_fsm_f_inverse) in fsms_iter:
+    for reduced_fsm, sse, (_, _, reduced_fsm_f_inverse) in fsms_iter:
         n_states = len(reduced_fsm.V)
+        mse = sse / db_fsm_size
         mse_by_n_states[n_states] = mse
         min_n_states_by_mse[mse] = n_states
         if n_states in vis_at:

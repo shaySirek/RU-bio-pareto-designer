@@ -1,6 +1,8 @@
-from loguru import logger
 from copy import deepcopy
+from math import ceil
+from loguru import logger
 
+from pareto_designer.algorithms.spaces import ScoreSpaceOption
 from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
     DB_FSM_Reducer,
@@ -8,14 +10,14 @@ from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
 from pareto_designer.models.motif import BindingMotif, StrandForBindingScore
 from pareto_designer.models.context import FSMContext
 from pareto_designer.shared.fsm_utils.fsm_factory import get_binding_motif_fsm
-from pareto_designer.shared.fsm_utils.reduced_fsms_generator import get_reduced_fsms
 
 
 class FSMBuilder:
     def __init__(self):
         self._matrix_id: str = None
         self._strand: StrandForBindingScore = StrandForBindingScore.Double
-        self._delta_mse_threshold: float = None
+        self._binding_score_space: ScoreSpaceOption = None
+        self._max_total_error: float = None
         self._reduction_ratio_threshold: float = None
         self._motif: BindingMotif = None
         self._fsm: FSM = None
@@ -30,12 +32,18 @@ class FSMBuilder:
         self._matrix_id = matrix_id
         return self
 
+    def with_binding_score_space(
+        self, score_space_option: ScoreSpaceOption
+    ) -> "FSMBuilder":
+        self._binding_score_space = score_space_option
+        return self
+
     def with_fsm_reduction(
         self,
-        delta_mse_threshold: float = 0.5,
-        reduction_ratio_threshold: float = 0.5,
+        max_total_error: float,
+        reduction_ratio_threshold: float,
     ) -> "FSMBuilder":
-        self._delta_mse_threshold = delta_mse_threshold
+        self._max_total_error = max_total_error
         self._reduction_ratio_threshold = reduction_ratio_threshold
         return self
 
@@ -48,30 +56,48 @@ class FSMBuilder:
         )
         self._fsm_id = "db_fsm"
         self._reduce_fsm()
-        return FSMContext(self._motif, self._binding_score_map, self._fsm, self._fsm_id)
+        self._fsm_id = f"{self._binding_score_space.value}_{self._fsm_id}"
+        return FSMContext(
+            self._motif,
+            self._binding_score_map,
+            self._binding_score_space.get_space(),
+            self._fsm,
+            self._fsm_id,
+        )
 
     def _reduce_fsm(self):
-        if not (self._delta_mse_threshold or self._reduction_ratio_threshold):
+        if not (self._max_total_error or self._reduction_ratio_threshold):
             return
 
+        err = 0.0
+        min_fsm_size = 0
+        if self._reduction_ratio_threshold is not None:
+            min_fsm_size = ceil((1 - self._reduction_ratio_threshold) * self._fsm_size)
         fsm_reducer = DB_FSM_Reducer[str, str](
-            self._fsm, self._binding_score_map, self._matrix_id
+            self._fsm,
+            self._binding_score_map,
+            self._binding_score_space.get_space(),
+            self._matrix_id,
         )
-        reduced_fsms_iter = get_reduced_fsms(
-            fsm_reducer,
-            self._delta_mse_threshold,
-            self._reduction_ratio_threshold,
-        )
-        fsm, binding_score_map, mse = next(reduced_fsms_iter)
-        self._fsm = deepcopy(fsm)
-        self._binding_score_map = binding_score_map.copy()
-        mse_at_trivial_fsm = mse
-        for _, _, current_mse in reduced_fsms_iter:
-            mse_at_trivial_fsm = current_mse
+        for (
+            reduced_fsm,
+            reduced_fsm_err,
+            (reduced_fsm_binding_score_map, _, _),
+        ) in fsm_reducer.find_reduced_fsms():
+            fsm_size = len(reduced_fsm.V)
+            if (
+                self._max_total_error is not None
+                and err >= self._reduction_ratio_threshold
+            ) or fsm_size == min_fsm_size:
+                err = reduced_fsm_err
+                self._fsm = deepcopy(reduced_fsm)
+                self._binding_score_map = reduced_fsm_binding_score_map.copy()
+            error_at_trivial_fsm = err
+
         reduction_efficiency = (
-            1 - (mse / mse_at_trivial_fsm) if mse_at_trivial_fsm > 0 else 1
+            1 - (err / error_at_trivial_fsm) if error_at_trivial_fsm > 0 else 1
         )
         self._fsm_id = f"reduced_fsm_{self._fsm_size}"
         logger.info(
-            f"Reduced DB FSM to FSM with {self._fsm_size} states and MSE={mse:.3f} (reduction efficiency={reduction_efficiency:.3f})"
+            f"Reduced DB FSM to FSM with {self._fsm_size} states and err={err:.3f} (reduction efficiency={reduction_efficiency:.3f})"
         )

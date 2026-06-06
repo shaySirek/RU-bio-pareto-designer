@@ -27,6 +27,7 @@ from pareto_designer.algorithms.fsm_reduction.colored_db_fsm_reducer import (
 from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
     DB_FSM_Reducer,
 )
+from pareto_designer.algorithms.spaces import LinearSpace
 from pareto_designer.algorithms.fsm_reduction.util import get_reduction_efficiency
 
 
@@ -128,12 +129,13 @@ def colored_run_on_motif(
             logger.info(f"[WARN] Skipped: matrix_id={matrix_id}, n_colors={n_colors}")
 
 
-def fsms_iter_as_dict_iter(fsms_iter):
-    for i, (reduced_fsm, mse, _) in enumerate(fsms_iter):
+def fsms_iter_as_dict_iter(fsm_reducer: DB_FSM_Reducer):
+    db_fsm_size = len(fsm_reducer.origin_fsm.V)
+    for i, (reduced_fsm, sse, _) in enumerate(fsm_reducer.find_reduced_fsms()):
         yield {
             "step": i + 1,
             "n_states": len(reduced_fsm.V),
-            "binding_mse": mse,
+            "binding_mse": sse / db_fsm_size,
         }
 
 
@@ -267,10 +269,9 @@ def main():
         for matrix_id in matrix_id_list:
             motif_ctx, db_fsm, binding_score_map = get_binding_motif_fsm(matrix_id)
             fsm_reducer = DB_FSM_Reducer[str, str](
-                db_fsm, binding_score_map, motif_ctx.matrix_id
+                db_fsm, binding_score_map, LinearSpace, motif_ctx.matrix_id
             )
-            fsms_iter = fsm_reducer.find_reduced_fsms()
-            generator = fsms_iter_as_dict_iter(fsms_iter)
+            generator = fsms_iter_as_dict_iter(fsm_reducer)
             colorless_results_file = get_colorless_results_file(
                 out_folder, motif_ctx.length, motif_ctx.matrix_id
             )

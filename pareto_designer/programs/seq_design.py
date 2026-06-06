@@ -6,6 +6,7 @@ from pathlib import Path
 from pareto_designer.shared.seq_design_utils.score_function_builder import (
     ScoreFunctionBuilder,
 )
+from pareto_designer.algorithms.spaces import ScoreSpaceOption
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigner
 from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
@@ -28,15 +29,28 @@ def parse_args():
         help="Matrix ID of the binding motif",
     )
     parser.add_argument(
+        "--binding-score-space",
+        type=str,
+        choices=[x.value for x in ScoreSpaceOption],
+        default=ScoreSpaceOption.LogExp.value,
+        help="Space of binding scores",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Skip optimization and re-render existing results",
     )
     parser.add_argument(
+        "--reduce-fsm-max-error",
+        type=float,
+        default=None,
+        help="Specifies the maximum error of the reduced FSM",
+    )
+    parser.add_argument(
         "--reduce-fsm-by",
         type=float,
         default=0.875,
-        help="Specifies the percentage of reduction in size of the FSM of the binding motif (default is 0.875)",
+        help="Specifies the percentage of reduction in size of the FSM (default is 0.875)",
     )
     parser.add_argument(
         "--budgets",
@@ -98,7 +112,11 @@ def main():
     fsm_builder = (
         FSMBuilder()
         .with_matrix_id(args.matrix_id)
-        .with_fsm_reduction(reduction_ratio_threshold=args.reduce_fsm_by)
+        .with_binding_score_space(ScoreSpaceOption(args.binding_score_space))
+        .with_fsm_reduction(
+            max_total_error=args.reduce_fsm_max_error,
+            reduction_ratio_threshold=args.reduce_fsm_by,
+        )
     )
     seq_designer = (
         SequenceDesigner()

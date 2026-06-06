@@ -15,6 +15,7 @@ from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
 )
 from pareto_designer.algorithms.fsm_reduction.util import get_reduction_efficiency
 from pareto_designer.algorithms.fsm import FSM
+from pareto_designer.algorithms.spaces import LinearSpace
 from pareto_designer.shared.plot import (
     plot_state_reduction_processes_across_strands,
     plot_motifs_reductions_scatter,
@@ -45,6 +46,7 @@ def run_fsm_reductions_across_strands(
     db_fsm: FSM[str, str],
     binding_score_maps: dict[StrandForBindingScore, dict[str, float]],
 ) -> dict[StrandForBindingScore, dict[int, float]]:
+    db_fsm_size = len(db_fsm.V)
     strand_mse_by_n_states: dict[StrandForBindingScore, dict[int, float]] = {}
 
     for strand_for_score, binding_score_map in binding_score_maps.items():
@@ -52,13 +54,14 @@ def run_fsm_reductions_across_strands(
             f"Running FSM state reduction with binding scores of motif {motif_ctx.matrix_id} [{strand_for_score.get_description()}]"
         )
         fsm_reducer = DB_FSM_Reducer[str, str](
-            db_fsm, binding_score_map, motif_ctx.matrix_id
+            db_fsm, binding_score_map, LinearSpace, motif_ctx.matrix_id
         )
         fsms_iter = fsm_reducer.find_reduced_fsms()
 
         strand_mse_by_n_states[strand_for_score] = {}
-        for reduced_fsm, mse, _ in fsms_iter:
+        for reduced_fsm, sse, _ in fsms_iter:
             n_states = len(reduced_fsm.V)
+            mse = sse / db_fsm_size
             strand_mse_by_n_states[strand_for_score][n_states] = mse
 
         reduction_efficiency = get_reduction_efficiency(

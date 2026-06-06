@@ -24,6 +24,7 @@ class ParetoOptimalDesign:
         self._score_function = ctx.score_function
         self._fsm = ctx.fsm_ctx.fsm
         self._binding_score_map = ctx.fsm_ctx.binding_score_map
+        self._binding_score_space = ctx.fsm_ctx.binding_score_space
         self._n = ctx.sequence_length
         self._m = ctx.fsm_ctx.motif_length
         self._sampler = ctx.run_ctx.sampler
@@ -48,6 +49,11 @@ class ParetoOptimalDesign:
             self._flush_every,
         ) as dp:
             self._dp_matrix = dp
+            self._dp_matrix.start_row()
+            self._dp_matrix.update(
+                self._fsm.v_init, [(0.0, self._binding_score_space.Identity)], None
+            )
+            self._dp_matrix.end_row(0)
             logger.info("Calculating DP matrix...")
             self._update_step_phase_1()
             self._update_step_phase_2()
@@ -82,7 +88,9 @@ class ParetoOptimalDesign:
                         back_ptr = ((u, sigma), int(local_max_idx))
 
                 if back_ptr is not None:
-                    self._dp_matrix.update(v, [(max_f, 0.0)], [[back_ptr]])
+                    self._dp_matrix.update(
+                        v, [(max_f, self._binding_score_space.Identity)], [[back_ptr]]
+                    )
 
             self._end_row(i)
 
@@ -133,7 +141,10 @@ class ParetoOptimalDesign:
                 for idx in indices:
                     score = scores_arr[idx]
                     yield (
-                        (score["f"] + f_off, score["b"] + b_off),
+                        (
+                            score["f"] + f_off,
+                            self._binding_score_space.add(score["b"], b_off),
+                        ),
                         ((u_state, base), int(idx)),
                     )
 

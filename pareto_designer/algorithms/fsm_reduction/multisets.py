@@ -1,38 +1,41 @@
 from typing import Generic
 from itertools import combinations
-from dataclasses import dataclass
+
+import numpy as np
 
 from pareto_designer.algorithms.fsm import T_STATE
 from pareto_designer.algorithms.fsm_reduction.util import hash_pair
+from pareto_designer.algorithms.fsm_reduction.hierarchical_clustering import (
+    ClusterState,
+    HierarchicalClustering,
+)
+from pareto_designer.algorithms.spaces import ScoreType
 
 
 class Multisets(Generic[T_STATE]):
-    def __init__(self, binding_score_map: dict[T_STATE, float]):
-        self._multiset_descriptors: dict[T_STATE, SetDescriptor] = {
-            v: SetDescriptor(size=1, mean=score)
+    def __init__(
+        self,
+        binding_score_map: dict[T_STATE, float],
+        hc: HierarchicalClustering,
+    ):
+        self._multiset_descriptors: dict[T_STATE, ClusterState] = {
+            v: ClusterState(size=1, mean=score)
             for v, score in binding_score_map.items()
         }
+        self._hc = hc
 
     def get_distance(self, v1: T_STATE, v2: T_STATE) -> float:
-        v1_desc = self._multiset_descriptors[v1]
-        v2_desc = self._multiset_descriptors[v2]
-        mean_diff = v1_desc.mean - v2_desc.mean
-        numerator = v1_desc.size * v2_desc.size * mean_diff * mean_diff
-        # use SSE rather than MSE to better precision
-        denominator = v1_desc.size + v2_desc.size
-        return numerator / denominator
+        c1 = self._multiset_descriptors[v1]
+        c2 = self._multiset_descriptors[v2]
+        return self._hc.distance(c1, c2)
 
     def merge(self, v1: T_STATE, v2: T_STATE):
-        v1_desc = self._multiset_descriptors.pop(v1)
-        v2_desc = self._multiset_descriptors.pop(v2)
-        merged_size = v1_desc.size + v2_desc.size
-        merged_mean = (v1_desc.sum + v2_desc.sum) / merged_size
-        self._multiset_descriptors[v1] = SetDescriptor(
-            size=merged_size, mean=merged_mean
-        )
+        c1 = self._multiset_descriptors.pop(v1)
+        c2 = self._multiset_descriptors.pop(v2)
+        self._multiset_descriptors[v1] = self._hc.merge(c1, c2)
         return self
 
-    def get_descriptor(self, v: T_STATE) -> "SetDescriptor":
+    def get_descriptor(self, v: T_STATE) -> ClusterState:
         return self._multiset_descriptors[v]
 
     def get_binding_score_map(self) -> dict[T_STATE, float]:
@@ -40,20 +43,28 @@ class Multisets(Generic[T_STATE]):
 
     def get_mergeable_pairs_distances(
         self, mergeable_sets: list[list[T_STATE]]
-    ) -> list[tuple[float, tuple[T_STATE, T_STATE]]]:
-        mergeable_pairs_distances = [
-            (self.get_distance(*pair), hash_pair(*pair))
-            for mergeable_set in mergeable_sets
-            for pair in combinations(mergeable_set, 2)
-        ]
-        return mergeable_pairs_distances
+    ) -> list[tuple[ScoreType, tuple[T_STATE, T_STATE]]]:
+        pairs = []
+        x_list, wx_list = [], []
+        y_list, wy_list = [], []
 
+        for mergeable_set in mergeable_sets:
+            for v1, v2 in combinations(mergeable_set, 2):
+                c1 = self._multiset_descriptors[v1]
+                c2 = self._multiset_descriptors[v2]
+                pairs.append(hash_pair(v1, v2))
+                x_list.append(c1.mean)
+                wx_list.append(c1.size)
+                y_list.append(c2.mean)
+                wy_list.append(c2.size)
 
-@dataclass
-class SetDescriptor:
-    size: int
-    mean: float
+        if not pairs:
+            return []
 
-    @property
-    def sum(self) -> float:
-        return self.size * self.mean
+        x = np.array(x_list, dtype=float)
+        w_x = np.array(wx_list, dtype=float)
+        y = np.array(y_list, dtype=float)
+        w_y = np.array(wy_list, dtype=float)
+        distances = self._hc.space.weighted_distance(x, w_x, y, w_y).tolist()
+
+        return list(zip(distances, pairs))

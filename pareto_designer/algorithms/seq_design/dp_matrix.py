@@ -68,10 +68,6 @@ class DP_Matrix:
         self._cached_chunk_data: np.ndarray | None = None
         self._cached_meta: list[dict[str, tuple[int, int]]] | None = None
 
-        self.start_row()
-        self.update(self.fsm.v_init, [(0.0, 0.0)], None)
-        self.end_row(0)
-
     def _get_state_index(self, v: T_STATE) -> int:
         return self._state_to_idx[v]
 

@@ -1,6 +1,8 @@
 from loguru import logger
 from typing import TypeVar, Hashable, Any
 
+import numpy as np
+
 T = TypeVar("T", bound=Hashable)
 K = TypeVar("K", bound=Any)
 
@@ -146,10 +148,24 @@ class MinHeap:
         return f"MinHeap(size={self.__len__()})"
 
     def __eq__(self, value):
-        if hasattr(value, "__len__"):
-            return sorted(value) == sorted(self._heap)
+        if not hasattr(value, "__len__"):
+            return False
+        if len(value) != len(self._heap):
+            return False
 
-        return False
+        heap_dict = dict()
+        value_dict = dict()
+        for key, item in self._heap:
+            heap_dict[item] = key
+        for key, item in value:
+            value_dict[item] = key
+        for item, key in heap_dict.items():
+            if item not in value_dict:
+                return False
+            if not np.isclose(key, value_dict[item]):
+                return False
+
+        return True
 
 
 if __name__ == "__main__":

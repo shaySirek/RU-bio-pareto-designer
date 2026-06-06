@@ -1,3 +1,4 @@
+from typing import Type
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import numpy as np
 
 from pareto_designer.models.motif import BindingMotif
 from pareto_designer.algorithms.fsm import FSM
+from pareto_designer.algorithms.spaces import ScoreSpace
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 
@@ -13,6 +15,7 @@ from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 class FSMContext:
     motif: BindingMotif
     binding_score_map: dict[str, float]
+    binding_score_space: Type[ScoreSpace]
     fsm: FSM
     fsm_id: str
 
