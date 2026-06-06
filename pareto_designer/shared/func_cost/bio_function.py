@@ -4,77 +4,59 @@ from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.func_cost.cost_utils import CostUtils
 
 
-def calculate_cost(
-    target_sequence: str,
-    coding_positions: list[int],
-    codon_usage_costs: dict[str, float],
-    i: int,
-    v: str,
-    sigma: str,
-    alpha: float,
-    beta: float,
-    w: float,
-) -> float:
-    codon_pos = coding_positions[i]
-
-    # non-coding region
-    if codon_pos == 0:
-        if target_sequence[i] == sigma:
-            return 0.0
-        if CostUtils.is_transition(target_sequence[i], sigma):
-            return alpha
-        return beta
-
-    # coding region
-    if codon_pos in {1, 2}:
-        return 0.0
-
-    proposed_codon = f"{v[-2:]}{sigma}"
-    target_codon = target_sequence[i - 2 : i + 1]
-    if CostUtils.encodes_same_amino_acid(proposed_codon, target_codon):
-        return codon_usage_costs[proposed_codon]
-
-    if CostUtils.is_orf_start(codon_pos) or CostUtils.either_is_stop_codon(
-        target_codon, proposed_codon
-    ):
-        return float("inf")
-
-    return w + CostUtils.hamming_dist(target_codon, proposed_codon)
-
-
 class BioCostFunction(ScoreFunction):
     def __init__(
         self,
         target_sequence: str,
-        coding_positions: list[int],
-        codon_usage_costs: dict[str, float],
+        cost_utils: CostUtils,
+        codon_usage: dict[str, float],
         alpha: float,
         beta: float,
         w: float,
     ):
-        self._target_sequence = target_sequence
-        self._coding_positions = coding_positions
-        self._codon_usage_costs = codon_usage_costs
+        self._codon_usage_costs = cost_utils.calculate_codon_costs(codon_usage)
+        self._target_sequence, self._coding_positions = cost_utils.get_coding_positions(
+            target_sequence
+        )
+        self._cost_utils = cost_utils
         self._alpha = alpha
         self._beta = beta
         self._w = w
 
     @property
-    def target_sequence(self):
+    def target_sequence(self) -> str:
         return self._target_sequence
 
+    @property
+    def codon_usage_costs(self) -> dict[str, float]:
+        return self._codon_usage_costs
+
     def cost(self, i: int, v: str, sigma: str) -> float:
-        return calculate_cost(
-            self._target_sequence,
-            self._coding_positions,
-            self._codon_usage_costs,
-            i,
-            v,
-            sigma,
-            self._alpha,
-            self._beta,
-            self._w,
-        )
+        codon_pos = self._coding_positions[i]
+
+        # non-coding region
+        if codon_pos == 0:
+            if self._target_sequence[i] == sigma:
+                return 0.0
+            if self._cost_utils.is_transition(self._target_sequence[i], sigma):
+                return self._alpha
+            return self._beta
+
+        # coding region
+        if codon_pos in {1, 2}:
+            return 0.0
+
+        proposed_codon = f"{v[-2:]}{sigma}"
+        target_codon = self._target_sequence[i - 2 : i + 1]
+        if self._cost_utils.encodes_same_amino_acid(proposed_codon, target_codon):
+            return self._codon_usage_costs[proposed_codon]
+
+        if self._cost_utils.is_orf_start(
+            codon_pos
+        ) or self._cost_utils.either_is_stop_codon(target_codon, proposed_codon):
+            return float("inf")
+
+        return self._w + self._cost_utils.hamming_dist(target_codon, proposed_codon)
 
     @property
     def orfs(self) -> list[tuple[int, int]]:

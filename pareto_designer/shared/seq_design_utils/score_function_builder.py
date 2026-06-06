@@ -12,7 +12,7 @@ class ScoreFunctionBuilder:
     def __init__(self):
         self._target_sequence: str = None
         self._is_exact_match_cost: bool = False
-        self._codon_usage_costs: dict[str, float] = None
+        self._codon_usage_file: Path = None
         self._alpha: float = None
         self._beta: float = None
         self._w: float = None
@@ -29,21 +29,7 @@ class ScoreFunctionBuilder:
 
     def with_codon_usage(self, codon_usage_file: Path) -> "ScoreFunctionBuilder":
         if not self._is_exact_match_cost:
-            codon_usage = read_codon_usage(codon_usage_file)
-            self._cost_utils = CostUtils()
-            self._codon_usage_costs = self._cost_utils.calculate_codon_costs(
-                codon_usage
-            )
-            with codon_usage_file.with_suffix(".costs.csv").open("w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["Codon", "Cost"])
-                writer.writerows(
-                    [
-                        (codon, round(cost, 3))
-                        for codon, cost in self._codon_usage_costs.items()
-                    ]
-                )
-
+            self._codon_usage_file = codon_usage_file
         return self
 
     def with_params(self, **kwargs) -> "ScoreFunctionBuilder":
@@ -57,14 +43,26 @@ class ScoreFunctionBuilder:
         if self._is_exact_match_cost:
             return ExactMatchCostFunction(self._target_sequence)
 
-        target_sequence, coding_positions = self._cost_utils.get_coding_positions(
-            self._target_sequence
-        )
-        return BioCostFunction(
-            target_sequence,
-            coding_positions,
-            self._codon_usage_costs,
+        cost_utils = CostUtils()
+        codon_usage = read_codon_usage(self._codon_usage_file)
+        func = BioCostFunction(
+            self._target_sequence,
+            cost_utils,
+            codon_usage,
             self._alpha,
             self._beta,
             self._w,
         )
+        with self._codon_usage_file.with_suffix(".costs.csv").open(
+            "w", newline=""
+        ) as f:
+            writer = csv.writer(f)
+            writer.writerow(["Codon", "Cost"])
+            writer.writerows(
+                [
+                    (codon, round(cost, 3))
+                    for codon, cost in func.codon_usage_costs.items()
+                ]
+            )
+
+        return func
