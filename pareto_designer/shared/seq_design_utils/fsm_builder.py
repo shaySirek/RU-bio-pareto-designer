@@ -92,12 +92,9 @@ class FSMBuilder:
                 err = reduced_fsm_err
                 self._fsm = deepcopy(reduced_fsm)
                 self._binding_score_map = reduced_fsm_binding_score_map.copy()
-            error_at_trivial_fsm = err
+                break
 
-        reduction_efficiency = (
-            1 - (err / error_at_trivial_fsm) if error_at_trivial_fsm > 0 else 1
-        )
         self._fsm_id = f"reduced_fsm_{self._fsm_size}"
         logger.info(
-            f"Reduced DB FSM to FSM with {self._fsm_size} states and err={err:.3f} (reduction efficiency={reduction_efficiency:.3f})"
+            f"Reduced DB FSM to FSM with {self._fsm_size} states and err={err:.3f}"
         )
