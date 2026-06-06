@@ -16,7 +16,7 @@ from pareto_designer.bio_fetcher.paths import (
     MOTIF_HITS_FILENAME,
 )
 from pareto_designer.shared.csv_writer import write_results_stream
-from pareto_designer.shared.cds_util import fasta_to_txt_with_marked_cds
+from pareto_designer.shared.func_cost.cost_utils import fasta_to_txt_with_marked_cds
 
 
 def _get_genes_motif_hits_stats(
@@ -61,7 +61,7 @@ def find_hits_in_genes(
         bases_before=bases_before_cds,
         bases_after=bases_after_cds,
     ):
-        fasta_to_txt_with_marked_cds(fasta_file, bases_before_cds)
+        fasta_to_txt_with_marked_cds(fasta_file, bases_before_cds, bases_after_cds)
         outdir, hits = find_hits_in_region(
             region, fasta_file, motif, motif_file, fimo_pval
         )

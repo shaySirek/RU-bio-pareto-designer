@@ -1,13 +1,11 @@
 from pathlib import Path
 import csv
 
-import numpy as np
-
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
+from pareto_designer.shared.func_cost.cost_utils import CostUtils
 from pareto_designer.shared.func_cost.bio_function import BioCostFunction
 from pareto_designer.shared.parsing import read_sequence, read_codon_usage
-from pareto_designer.shared.cds_util import get_coding_positions
 
 
 class ScoreFunctionBuilder:
@@ -32,7 +30,10 @@ class ScoreFunctionBuilder:
     def with_codon_usage(self, codon_usage_file: Path) -> "ScoreFunctionBuilder":
         if not self._is_exact_match_cost:
             codon_usage = read_codon_usage(codon_usage_file)
-            self._codon_usage_costs = self._get_codon_usage_costs(codon_usage)
+            self._cost_utils = CostUtils()
+            self._codon_usage_costs = self._cost_utils.calculate_codon_costs(
+                codon_usage
+            )
             with codon_usage_file.with_suffix(".costs.csv").open("w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["Codon", "Cost"])
@@ -45,13 +46,6 @@ class ScoreFunctionBuilder:
 
         return self
 
-    @staticmethod
-    def _get_codon_usage_costs(codon_usage: dict[str, float]) -> dict[str, float]:
-        usage_values = np.array(list(codon_usage.values()))
-        min_usage = usage_values.min()
-        costs = np.log(usage_values) / np.log(min_usage)
-        return dict(zip(codon_usage.keys(), costs))
-
     def with_params(self, **kwargs) -> "ScoreFunctionBuilder":
         if not self._is_exact_match_cost:
             self._alpha = kwargs.pop("alpha")
@@ -63,7 +57,9 @@ class ScoreFunctionBuilder:
         if self._is_exact_match_cost:
             return ExactMatchCostFunction(self._target_sequence)
 
-        target_sequence, coding_positions = get_coding_positions(self._target_sequence)
+        target_sequence, coding_positions = self._cost_utils.get_coding_positions(
+            self._target_sequence
+        )
         return BioCostFunction(
             target_sequence,
             coding_positions,

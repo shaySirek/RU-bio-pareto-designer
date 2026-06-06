@@ -1,51 +1,7 @@
 import re
 
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
-from pareto_designer.shared.func_cost.amino_acid_utils import AminoAcidConfig
-
-
-def evaluate_non_coding_substitution(
-    target_sequence: str,
-    i: int,
-    sigma: str,
-    alpha: float,
-    beta: float,
-) -> float:
-    # No substitution
-    if target_sequence[i] == sigma:
-        return 0.0
-
-    # Transition substitution
-    if AminoAcidConfig.is_transition(target_sequence[i], sigma):
-        return alpha
-
-    # Transversion substitution
-    return beta
-
-
-def evaluate_coding_substitution(
-    proposed_codon: str,
-    target_codon: str,
-    is_start_codon: int,
-    codon_usage_costs: dict[str, float],
-    w: float,
-) -> float:
-    # No substitution
-    if proposed_codon == target_codon:
-        return 0.0
-
-    # Synonymous substitution with a logarithmic penalty based on codon usage
-    if AminoAcidConfig.encodes_same_amino_acid(proposed_codon, target_codon):
-        return codon_usage_costs[proposed_codon]
-
-    # Penalize stop codon formation
-    if is_start_codon or AminoAcidConfig.either_is_stop_codon(
-        target_codon, proposed_codon
-    ):
-        return float("inf")
-
-    # Non-synonymous substitution
-    return w + AminoAcidConfig.edit_dist(target_codon, proposed_codon)
+from pareto_designer.shared.func_cost.cost_utils import CostUtils
 
 
 def calculate_cost(
@@ -61,25 +17,29 @@ def calculate_cost(
 ) -> float:
     codon_pos = coding_positions[i]
 
-    # Non-coding region logic
+    # non-coding region
     if codon_pos == 0:
-        return evaluate_non_coding_substitution(target_sequence, i, sigma, alpha, beta)
+        if target_sequence[i] == sigma:
+            return 0.0
+        if CostUtils.is_transition(target_sequence[i], sigma):
+            return alpha
+        return beta
 
-    # Coding region positions 1 and 2
+    # coding region
     if codon_pos in {1, 2}:
         return 0.0
 
-    # Coding region, position 3
-    if codon_pos in {-3, 3}:
-        proposed_codon = f"{v[-2:]}{sigma}"
-        target_codon = target_sequence[i - 2 : i + 1]
-        is_start_codon = AminoAcidConfig.is_start_codon(codon_pos)
-        return evaluate_coding_substitution(
-            proposed_codon, target_codon, is_start_codon, codon_usage_costs, w
-        )
+    proposed_codon = f"{v[-2:]}{sigma}"
+    target_codon = target_sequence[i - 2 : i + 1]
+    if CostUtils.encodes_same_amino_acid(proposed_codon, target_codon):
+        return codon_usage_costs[proposed_codon]
 
-    # Fallback (should not be reached under correct conditions)
-    raise ValueError(f"Unexpected codon position value: {codon_pos}")
+    if CostUtils.is_orf_start(codon_pos) or CostUtils.either_is_stop_codon(
+        target_codon, proposed_codon
+    ):
+        return float("inf")
+
+    return w + CostUtils.hamming_dist(target_codon, proposed_codon)
 
 
 class BioCostFunction(ScoreFunction):
