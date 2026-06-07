@@ -10,6 +10,7 @@ from pareto_designer.algorithms.spaces import ScoreSpaceOption
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigner
 from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
+from pareto_designer.shared.seq_design_utils.pareto_utils import compare_fronts_grid
 
 
 def parse_args():
@@ -125,10 +126,19 @@ def main():
     )
 
     for seq_file in seq_files:
+        fronts = dict()
+        fronts_cmp_file: Path = None
         for k in args.budgets:
             for alpha in args.sampler_alpha:
-                (
+                sampler = PowerLawSUS(k, alpha)
+                ctx, frontier = (
                     seq_designer.with_target_sequence(seq_file)
-                    .with_sampler(PowerLawSUS(k, alpha))
+                    .with_sampler(sampler)
                     .run(dry_run=args.dry_run)
                 )
+                fronts[sampler.params] = frontier
+                fronts_cmp_file = (
+                    ctx.run_ctx.output_path.parent / "pareto_comparison.json"
+                )
+
+        compare_fronts_grid(fronts, fronts_cmp_file)

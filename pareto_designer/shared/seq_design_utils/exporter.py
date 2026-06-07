@@ -128,6 +128,9 @@ class ParetoExporter:
         self.results.sort(key=lambda x: x.id)
         self.ctx.n_solutions = len(self.results)
 
+    def get_frontier(self) -> np.ndarray:
+        return np.array([[r.cost, r.binding_score] for r in self.results], dtype=float)
+
     def _get_codon_context(self, pos: int) -> Optional[dict]:
         for start, end in self.ctx.orfs:
             if start <= pos <= end:

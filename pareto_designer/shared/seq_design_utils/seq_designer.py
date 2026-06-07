@@ -1,8 +1,9 @@
 from loguru import logger
 from pathlib import Path
 
+import numpy as np
+
 from pareto_designer.algorithms.seq_design.algorithm import ParetoOptimalDesign
-from pareto_designer.algorithms.seq_design.types import T_SOLUTION
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.prof import run_with_timing, format_duration
 from pareto_designer.shared.seq_design_utils.score_function_builder import (
@@ -62,9 +63,7 @@ class SequenceDesigner:
         )
         return DesignContext(self._score_function, self._fsm_ctx, run_ctx)
 
-    def run(
-        self, dry_run: bool = False
-    ) -> tuple[list[tuple[str, T_SOLUTION]], DesignContext]:
+    def run(self, dry_run: bool = False) -> tuple[DesignContext, np.ndarray]:
         ctx = self._build()
         exporter = ParetoExporter(ctx)
 
@@ -90,3 +89,5 @@ class SequenceDesigner:
             exporter.save()
 
         exporter.render()
+        frontier = exporter.get_frontier()
+        return ctx, frontier
