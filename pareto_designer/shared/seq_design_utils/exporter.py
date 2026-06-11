@@ -1,4 +1,5 @@
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable, Optional
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -8,7 +9,14 @@ import numpy as np
 from pareto_designer.algorithms.seq_design.types import T_SOLUTION
 from pareto_designer.bio_fetcher.fimo import get_motif_hits
 from pareto_designer.bio_fetcher.paths import MOTIF_DIR
-from pareto_designer.models.context import ParetoResult, DesignContext
+from pareto_designer.models.context import (
+    ParetoResult,
+    DesignContext,
+    RunContext,
+    FSMContext,
+)
+from pareto_designer.shared.func_cost.base_function import ScoreFunction
+from pareto_designer.shared.binding_utils import get_binding
 from pareto_designer.shared.parsing import write_sequence
 from pareto_designer.views.pareto_front.html_exporter import (
     render_solution_html,
@@ -17,122 +25,254 @@ from pareto_designer.views.pareto_front.html_exporter import (
 from pareto_designer.views.pareto_front.png_exporter import (
     render_heatmap_png,
     render_pareto_front_png,
+    render_heatmap_legend,
 )
 
 
 class ParetoExporter:
-    def __init__(self, design_ctx: DesignContext):
-        self.design_ctx = design_ctx
-        self.ctx = design_ctx.run_ctx
-        self.score_function = design_ctx.score_function
-        self.motif = design_ctx.fsm_ctx.motif
-        self.results: list[ParetoResult] = []
-        self.ctx.output_path.mkdir(parents=True, exist_ok=True)
+    def __init__(self, ctx: DesignContext):
+        self.ctx = ctx
+        self._results: list[ParetoResult] = []
+        self._frontier: np.ndarray = None
+        self.__motif_file: Path = None
+        self.output_path.mkdir(parents=True, exist_ok=True)
 
-    def process_all(self, solutions: Iterable[tuple[str, T_SOLUTION]]):
-        motif_file = self.motif.dump("meme", MOTIF_DIR)
+    @property
+    def _run_ctx(self) -> RunContext:
+        return self.ctx.run_ctx
+
+    @property
+    def output_path(self) -> Path:
+        return self.ctx.run_ctx.output_path
+
+    @property
+    def _index_file(self) -> Path:
+        return self.output_path / "results_metadata.json"
+
+    @property
+    def _score_function(self) -> ScoreFunction:
+        return self.ctx.score_function
+
+    @property
+    def _fsm_ctx(self) -> FSMContext:
+        return self.ctx.fsm_ctx
+
+    @property
+    def _motif_file(self) -> Path:
+        if self.__motif_file is None:
+            self.__motif_file = self._fsm_ctx.motif.dump("meme", MOTIF_DIR)
+        return self.__motif_file
+
+    def save(self, solutions: Iterable[tuple[str, T_SOLUTION]]):
         sorted_sols = sorted(solutions, key=lambda x: -x[1][0])
-
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
-                executor.submit(self._process_single, idx, sol, motif_file)
+                executor.submit(self._process_single, idx, sol)
                 for idx, sol in enumerate(sorted_sols)
             ]
             done, _ = wait(futures)
-            self.results = [f.result() for f in done if not f.exception()]
+            self._results = [f.result() for f in done if not f.exception()]
 
-        self.results.sort(key=lambda x: x.id)
+        self._results.sort(key=lambda x: x.id)
+        self._dump()
 
     def _process_single(
-        self, sol_idx: int, solution: tuple[str, T_SOLUTION], motif_file: Path
+        self, sol_idx: int, solution: tuple[str, T_SOLUTION]
     ) -> ParetoResult:
         sol_id = f"{sol_idx + 1:03d}"
+        sol_fasta_file = self.output_path / f"{sol_id}_sequence.fa"
+        sol_txt_file = self.output_path / f"{sol_id}_sequence.txt"
+        sol_positional_objectives_file = (
+            self.output_path / f"{sol_id}_sequence_positional_objectives.npy"
+        )
+
         sequence, (f_score, binding_score) = solution
-        functional_cost = max(0.0, -f_score)
-        costs = np.array(self.score_function.get_costs(sequence), dtype=float)
-        n_substitutions = int(np.count_nonzero(costs > 0))
-
-        sol_base = self.ctx.output_path / f"{sol_id}_sequence"
-        sol_fasta_file = sol_base.with_suffix(".fa")
-
         write_sequence(sol_fasta_file, sequence, header=f"Solution {sol_id}")
-        motif_hits = get_motif_hits(sol_id, sol_fasta_file, self.motif, motif_file)
+        sol_txt_file.write_text(sequence)
+
+        functional_cost = max(0.0, -f_score)
+        costs = np.array(self._score_function.get_costs(sequence), dtype=float)
+        n_cost_items = int(np.count_nonzero(costs > 0))
+        binding = get_binding(sequence, self._fsm_ctx)
+        positional_objectives = np.column_stack((costs, binding))
+        np.save(sol_positional_objectives_file, positional_objectives)
+
+        motif_hits = get_motif_hits(
+            sol_id, sol_fasta_file, self._fsm_ctx.motif, self._motif_file
+        )
 
         return ParetoResult(
             cost=float(functional_cost),
             binding_score=float(binding_score),
             id=sol_id,
             url=f"{sol_id}_details.html",
-            txt_file=f"{sol_id}_sequence.txt",
-            fasta_file=f"{sol_id}_sequence.fa",
+            txt_file=sol_txt_file.name,
+            fasta_file=sol_fasta_file.name,
+            positional_objectives_file=sol_positional_objectives_file.name,
+            max_positional_cost=np.max(costs),
+            min_positional_binding=np.nanmin(binding),
+            max_positional_binding=np.nanmax(binding),
             sequence=sequence,
-            costs=costs,
-            n_substitutions=n_substitutions,
+            n_cost_items=n_cost_items,
             motif_hits=motif_hits,
         )
 
-    def save(self):
-        export_data = {
+    def _dump(self):
+        data = {
             "metadata": {
-                "runtime": self.ctx.runtime,
-                "n_solutions": len(self.results),
-                "target_id": self.ctx.target_sequence_id,
+                "runtime": self._run_ctx.runtime,
+                "n_solutions": len(self._results),
+                "target_id": self._run_ctx.target_sequence_id,
             },
-            "results": [],
+            "results": [asdict(res) for res in self._results],
         }
-
-        for res in self.results:
-            (self.ctx.output_path / res.txt_file).write_text(res.sequence)
-            export_data["results"].append(
-                {
-                    "id": res.id,
-                    "cost": res.cost,
-                    "binding_score": res.binding_score,
-                    "sequence": res.sequence,
-                    "costs": res.costs.tolist(),
-                    "n_substitutions": res.n_substitutions,
-                    "motif_hits": res.motif_hits,
-                }
-            )
-
-        with (self.ctx.output_path / "results_metadata.json").open("w") as f:
-            json.dump(export_data, f, indent=4)
+        with self._index_file.open("w") as f:
+            json.dump(data, f, indent=4)
 
     def load(self):
-        path = self.ctx.output_path / "results_metadata.json"
-        if not path.exists():
+        if not self._index_file.exists():
             return
-
-        with path.open("r") as f:
+        with self._index_file.open("r") as f:
             data = json.load(f)
 
         meta = data.get("metadata", {})
-        self.ctx.runtime = meta.get("runtime", "-")
+        self._run_ctx.runtime = meta.get("runtime", "-")
+        self._results = [ParetoResult(**d) for d in data.get("results", [])]
+        self._results.sort(key=lambda x: x.id)
+        self._run_ctx.n_solutions = len(self._results)
 
-        self.results = []
-        for d in data.get("results", []):
-            res = ParetoResult(
-                cost=float(d["cost"]),
-                binding_score=float(d["binding_score"]),
-                id=d["id"],
-                url=f"{d['id']}_details.html",
-                txt_file=f"{d['id']}_sequence.txt",
-                fasta_file=f"{d['id']}_sequence.fa",
-                sequence=d["sequence"],
-                costs=np.array(d["costs"]),
-                n_substitutions=d["n_substitutions"],
-                motif_hits=d["motif_hits"],
+    @property
+    def frontier(self) -> np.ndarray:
+        if self._frontier is None:
+            self._frontier = np.array(
+                [[r.cost, r.binding_score] for r in self._results], dtype=float
             )
-            self.results.append(res)
+        return self._frontier
 
-        self.results.sort(key=lambda x: x.id)
-        self.ctx.n_solutions = len(self.results)
+    @property
+    def max_cost(self) -> float:
+        return np.max(self.frontier[:, 0])
 
-    def get_frontier(self) -> np.ndarray:
-        return np.array([[r.cost, r.binding_score] for r in self.results], dtype=float)
+    @property
+    def max_positional_cost(self) -> float:
+        return max(r.max_positional_cost for r in self._results)
+
+    @property
+    def min_binding(self) -> float:
+        return np.min(self.frontier[:, 1])
+
+    @property
+    def max_binding(self) -> float:
+        return np.max(self.frontier[:, 1])
+
+    @property
+    def min_positional_binding(self) -> float:
+        return min(r.min_positional_binding for r in self._results)
+
+    @property
+    def max_positional_binding(self) -> float:
+        return max(r.max_positional_binding for r in self._results)
+
+    def render(
+        self,
+        max_cost: float,
+        binding_range: tuple[float, float],
+        max_positional_cost: float,
+        positional_binding_range: tuple[float, float],
+    ):
+        if not self._results:
+            return
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            tasks = [
+                executor.submit(
+                    render_pareto_front_png,
+                    self._run_ctx,
+                    self._results,
+                    max_cost,
+                    binding_range,
+                ),
+                executor.submit(render_pareto_front_html, self._run_ctx, self._results),
+            ]
+            tasks.extend(
+                [
+                    executor.submit(
+                        self._render_solution,
+                        res,
+                        max_positional_cost,
+                        positional_binding_range,
+                    )
+                    for res in self._results
+                ]
+            )
+
+            wait(tasks)
+
+    def render_target_sequence(
+        self,
+        max_positional_cost: float,
+        positional_binding_range: tuple[float, float],
+    ):
+        seq_id = "target_sequence"
+        sequence = self.ctx.target_sequence
+        seq_fasta_file = self.output_path.parent / f"{seq_id}.fa"
+        write_sequence(seq_fasta_file, sequence, header="Target Sequence")
+
+        binding = get_binding(sequence, self._fsm_ctx)
+        motif_hits = get_motif_hits(
+            seq_id, seq_fasta_file, self._fsm_ctx.motif, self._motif_file
+        )
+
+        render_heatmap_png(
+            self._run_ctx,
+            seq_id,
+            None,
+            binding,
+            motif_hits,
+            max_positional_cost,
+            positional_binding_range,
+        )
+        render_heatmap_legend(
+            self._run_ctx,
+            max_positional_cost,
+            positional_binding_range,
+        )
+
+    def _render_solution(
+        self,
+        res: ParetoResult,
+        max_positional_cost: float,
+        positional_binding_range: tuple[float, float],
+    ):
+        positional_objectives: np.ndarray = np.load(
+            self.output_path / res.positional_objectives_file
+        )
+        costs = positional_objectives[:, 0]
+        binding = positional_objectives[:, 1]
+        cost_items = [
+            (i + 1, cost, self._get_codon_context(i + 1))
+            for i, cost in enumerate(costs.tolist())
+            if cost > 0
+        ]
+        seq_with_meta = self._get_seq_with_is_coding(res)
+        render_solution_html(
+            self._run_ctx,
+            res,
+            cost_items,
+            seq_with_meta,
+        )
+        render_heatmap_png(
+            self._run_ctx,
+            res.id,
+            costs,
+            binding,
+            res.motif_hits,
+            max_positional_cost,
+            positional_binding_range,
+        )
 
     def _get_codon_context(self, pos: int) -> Optional[dict]:
-        for start, end in self.ctx.orfs:
+        for start, end in self._run_ctx.orfs:
             if start <= pos <= end:
                 rel_pos = pos - start
                 codon_start = start + ((rel_pos // 3) * 3) - 1
@@ -145,40 +285,7 @@ class ParetoExporter:
         seq_with_meta = []
         for i, char in enumerate(res.sequence):
             pos = i + 1
-            is_orf = any(s <= pos <= e for s, e in self.ctx.orfs)
+            is_orf = any(s <= pos <= e for s, e in self._run_ctx.orfs)
             seq_with_meta.append((char, is_orf))
 
         return seq_with_meta
-
-    def render(self):
-        if not self.results:
-            return
-
-        render_pareto_front_png(self.ctx, self.results)
-        render_pareto_front_html(self.ctx, self.results)
-
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            tasks = []
-            for res in self.results:
-                substitutions = [
-                    (i + 1, cost, self._get_codon_context(i + 1))
-                    for i, cost in enumerate(res.costs)
-                    if cost > 0
-                ]
-                seq_with_meta = self._get_seq_with_is_coding(res)
-
-                tasks.append(
-                    executor.submit(
-                        render_solution_html,
-                        self.ctx,
-                        res,
-                        substitutions,
-                        seq_with_meta,
-                    )
-                )
-                tasks.append(
-                    executor.submit(
-                        render_heatmap_png, self.ctx, res, self.score_function.maximum
-                    )
-                )
-            wait(tasks)

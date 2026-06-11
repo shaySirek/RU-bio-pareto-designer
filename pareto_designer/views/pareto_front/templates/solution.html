@@ -66,7 +66,7 @@
             <div class="metrics">
                 <div>
                     <strong>Cost:</strong> {{ "%.4f"|format(res.cost) }} | 
-                    <strong>Substitutions:</strong> {{ res.n_substitutions }}
+                    <strong>Non-zero items:</strong> {{ res.n_cost_items }}
                 </div>
                 <div>
                     <strong>Binding:</strong> {{ "%.4f"|format(res.binding_score) }} | 
@@ -89,14 +89,14 @@
             <img src="{{ res.id }}_heatmap.png" alt="Heatmap">
         </div>
 
-        <h3>Substitutions</h3>
+        <h3>Cost Items</h3>
         
         <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
                         <th>Position</th>
-                        <th>Substitution</th>
+                        <th>Item</th>
                         <th>Cost</th>
                     </tr>
                 </thead>

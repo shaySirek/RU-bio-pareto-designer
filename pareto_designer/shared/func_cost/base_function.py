@@ -35,7 +35,3 @@ class ScoreFunction(ABC):
     @property
     def params(self) -> dict:
         return {}
-
-    @property
-    def maximum(self) -> float:
-        return 1.0

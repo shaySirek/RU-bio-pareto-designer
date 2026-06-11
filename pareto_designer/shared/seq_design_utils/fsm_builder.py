@@ -47,7 +47,7 @@ class FSMBuilder:
         self._reduction_ratio_threshold = reduction_ratio_threshold
         return self
 
-    def build(self) -> FSMContext:
+    def build(self, dry_run: bool = False) -> FSMContext:
         if self._matrix_id is None:
             raise ValueError("Cannot build FSM: motif is not set.")
 
@@ -55,7 +55,7 @@ class FSMBuilder:
             self._matrix_id, self._strand
         )
         self._fsm_id = "db_fsm"
-        self._reduce_fsm()
+        self._reduce_fsm(dry_run)
         self._fsm_id = f"{self._binding_score_space.value}_{self._fsm_id}"
         return FSMContext(
             self._motif,
@@ -65,7 +65,7 @@ class FSMBuilder:
             self._fsm_id,
         )
 
-    def _reduce_fsm(self):
+    def _reduce_fsm(self, dry_run: bool = False):
         if not (self._max_total_error or self._reduction_ratio_threshold):
             return
 
@@ -73,6 +73,10 @@ class FSMBuilder:
         min_fsm_size = 0
         if self._reduction_ratio_threshold is not None:
             min_fsm_size = ceil((1 - self._reduction_ratio_threshold) * self._fsm_size)
+            if dry_run:
+                self._fsm_id = f"reduced_fsm_{min_fsm_size}"
+                return
+
         fsm_reducer = DB_FSM_Reducer[str, str](
             self._fsm,
             self._binding_score_map,

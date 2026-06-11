@@ -16,13 +16,13 @@ def _get_env():
 def render_solution_html(
     ctx: RunContext,
     res: ParetoResult,
-    substitutions: list[tuple[int, float, dict | None]],
+    cost_items: list[tuple[int, float, dict | None]],
     seq_with_meta: list[tuple[str, bool]],
 ):
     template = _get_env().get_template("solution.html")
 
     html_out = template.render(
-        ctx=ctx, res=res, cost_data=substitutions, seq_with_meta=seq_with_meta
+        ctx=ctx, res=res, cost_data=cost_items, seq_with_meta=seq_with_meta
     )
 
     output_file = ctx.output_path / res.url

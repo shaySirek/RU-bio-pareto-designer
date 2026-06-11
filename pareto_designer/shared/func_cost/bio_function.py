@@ -75,8 +75,3 @@ class BioCostFunction(ScoreFunction):
             "Non-synonymous codon": self._w,
             "Synonymous codon": "by codon usage",
         }
-
-    @property
-    def maximum(self) -> float:
-        costs = (self._alpha, self._beta, self._w + 3)
-        return max(filter(lambda c: c != float("inf"), costs))

@@ -17,6 +17,11 @@ class ScoreSpace(ABC):
     def _ret(out: ScoreType) -> ScoreType:
         return out.item() if isinstance(out, np.ndarray) and out.ndim == 0 else out
 
+    @staticmethod
+    @abstractmethod
+    def proj(x: ScoreType) -> ScoreType:
+        pass
+
     @classmethod
     @abstractmethod
     def _add(cls, x: ScoreType, y: ScoreType) -> ScoreType:
@@ -28,9 +33,8 @@ class ScoreSpace(ABC):
         pass
 
     @classmethod
-    @abstractmethod
     def _distance(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        pass
+        return np.square(cls.proj(x) - cls.proj(y))
 
     @classmethod
     def _weighted_distance(
@@ -48,10 +52,6 @@ class ScoreSpace(ABC):
     @classmethod
     def add(cls, x: ScoreType, y: ScoreType) -> ScoreType:
         return cls._ret(cls._add(x, y))
-
-    @classmethod
-    def subtract(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        return cls._ret(cls._subtract(x, y))
 
     @classmethod
     def distance(cls, x: ScoreType, y: ScoreType) -> ScoreType:
@@ -73,17 +73,13 @@ class ScoreSpace(ABC):
 class LinearSpace(ScoreSpace):
     Identity: float = 0.0
 
+    @staticmethod
+    def proj(x: ScoreType) -> ScoreType:
+        return x
+
     @classmethod
     def _add(cls, x: ScoreType, y: ScoreType) -> ScoreType:
         return x + y
-
-    @classmethod
-    def _subtract(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        return x - y
-
-    @classmethod
-    def _distance(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        return (x - y) ** 2
 
     @classmethod
     def _weighted_mean(
@@ -95,49 +91,22 @@ class LinearSpace(ScoreSpace):
 class ExpSpace(ScoreSpace):
     Identity: float = -float("inf")
 
+    @staticmethod
+    def proj(x: ScoreType) -> ScoreType:
+        return np.exp(x)
+
     @classmethod
     def _add(cls, x: ScoreType, y: ScoreType) -> ScoreType:
         return np.logaddexp(x, y)
 
     @classmethod
-    def _subtract(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        xa, ya = np.broadcast_arrays(
-            np.asarray(x, dtype=float), np.asarray(y, dtype=float)
-        )
-
-        if np.any(xa < ya):
-            raise ValueError(f"Log-space subtraction underflow: x={x}, y={y}")
-
-        out = np.empty_like(xa)
-        equal = xa == ya
-        y_inf = ya == cls.Identity
-        valid = ~(equal | y_inf)
-
-        out[equal] = cls.Identity
-        out[y_inf] = xa[y_inf]
-
-        if np.any(valid):
-            out[valid] = ya[valid] + np.log(np.expm1(xa[valid] - ya[valid]))
-
-        return out
-
-    @classmethod
-    def _distance(cls, x: ScoreType, y: ScoreType) -> ScoreType:
-        xa, ya = np.broadcast_arrays(
-            np.asarray(x, dtype=float), np.asarray(y, dtype=float)
-        )
-        return (np.exp(xa) - np.exp(ya)) ** 2
-
-    @classmethod
     def _weighted_mean(
         cls, x: ScoreType, w_x: WeightType, y: ScoreType, w_y: WeightType
     ) -> ScoreType:
-        xa = np.asarray(x, dtype=float)
-        ya = np.asarray(y, dtype=float)
-
-        stacked_scores = np.stack([xa, ya], axis=0)
+        stacked_scores = np.stack(
+            [np.asarray(x, dtype=float), np.asarray(y, dtype=float)], axis=0
+        )
         stacked_weights = np.stack([w_x, w_y], axis=0)
-
         return logsumexp(stacked_scores, axis=0, b=stacked_weights) - np.log(w_x + w_y)
 
 

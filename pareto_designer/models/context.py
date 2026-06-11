@@ -2,8 +2,6 @@ from typing import Type
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-
 from pareto_designer.models.motif import BindingMotif
 from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.algorithms.spaces import ScoreSpace
@@ -80,9 +78,12 @@ class ParetoResult:
     url: str
     txt_file: str
     fasta_file: str
+    positional_objectives_file: str
+    max_positional_cost: float
+    min_positional_binding: float
+    max_positional_binding: float
     sequence: str
-    costs: np.ndarray
-    n_substitutions: int
+    n_cost_items: int
     motif_hits: list[tuple[int, int]]
 
     @property
@@ -97,8 +98,12 @@ class DesignContext:
     run_ctx: RunContext
 
     @property
+    def target_sequence(self) -> str:
+        return self.score_function.target_sequence
+
+    @property
     def sequence_length(self) -> int:
-        return len(self.score_function.target_sequence)
+        return len(self.target_sequence)
 
 
 def _norm_key(k: str) -> str:

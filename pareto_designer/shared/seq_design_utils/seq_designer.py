@@ -1,8 +1,6 @@
 from loguru import logger
 from pathlib import Path
 
-import numpy as np
-
 from pareto_designer.algorithms.seq_design.algorithm import ParetoOptimalDesign
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.prof import run_with_timing, format_duration
@@ -32,9 +30,10 @@ class SequenceDesigner:
         return self
 
     def with_target_sequence(self, sequence_file: Path) -> "SequenceDesigner":
-        self._sequence_id = sequence_file.stem
-        self._score_function_builder.with_target_sequence(sequence_file)
-        self._score_function = None
+        if self._sequence_id is None or self._sequence_id != sequence_file.stem:
+            self._sequence_id = sequence_file.stem
+            self._score_function_builder.with_target_sequence(sequence_file)
+            self._score_function = None
         return self
 
     def with_fsm_builder(self, fsm_builder: FSMBuilder) -> "SequenceDesigner":
@@ -46,11 +45,11 @@ class SequenceDesigner:
         self._sampler = sampler
         return self
 
-    def _build(self) -> DesignContext:
+    def _build(self, dry_run: bool = False) -> DesignContext:
         if not self._score_function:
             self._score_function = self._score_function_builder.build()
         if not self._fsm_ctx:
-            self._fsm_ctx = self._fsm_builder.build()
+            self._fsm_ctx = self._fsm_builder.build(dry_run)
         run_ctx = RunContext(
             target_sequence_id=self._sequence_id,
             target_sequence=self._score_function.target_sequence,
@@ -63,12 +62,12 @@ class SequenceDesigner:
         )
         return DesignContext(self._score_function, self._fsm_ctx, run_ctx)
 
-    def run(self, dry_run: bool = False) -> tuple[DesignContext, np.ndarray]:
-        ctx = self._build()
+    def run(self, dry_run: bool = False) -> ParetoExporter:
+        ctx = self._build(dry_run)
         exporter = ParetoExporter(ctx)
 
         if dry_run:
-            logger.info(f"Dry run: Loading results for {self._sequence_id}")
+            logger.info(f"Dry run: loading results for {self._sequence_id}")
             exporter.load()
         else:
             designer = ParetoOptimalDesign(ctx)
@@ -84,10 +83,6 @@ class SequenceDesigner:
             logger.info(f"Found {n_solutions} Pareto-optimal sequences in {runtime}")
             ctx.run_ctx.runtime = runtime
             ctx.run_ctx.n_solutions = n_solutions
+            exporter.save(solutions)
 
-            exporter.process_all(solutions)
-            exporter.save()
-
-        exporter.render()
-        frontier = exporter.get_frontier()
-        return ctx, frontier
+        return exporter
