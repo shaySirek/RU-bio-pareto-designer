@@ -5,26 +5,27 @@ from loguru import logger
 import numpy as np
 
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
+from pareto_designer.views.pareto_front.png_exporter import render_pareto_frontiers
 
 
 def compare_frontiers(
-    fronts: dict[str, np.ndarray],
+    frontiers: dict[str, np.ndarray],
     output_file: Path,
     grid_bins: int = 100,
     alpha: float = 1.1,
 ) -> dict:
-    if not fronts:
-        raise ValueError("The dictionary of fronts cannot be empty.")
+    if not frontiers:
+        raise ValueError("The dictionary of frontiers cannot be empty.")
     if alpha <= 1.0:
         raise ValueError("Alpha must be strictly greater than 1.0.")
 
-    front_names = list(fronts.keys())
-    front_arrays = [np.atleast_2d(fronts[name]) for name in front_names]
+    frontier_names = list(frontiers.keys())
+    frontier_arrays = [np.atleast_2d(frontiers[name]) for name in frontier_names]
 
-    num_fronts = len(front_arrays)
-    front_sizes = np.array([f.shape[0] for f in front_arrays])
+    num_frontiers = len(frontier_arrays)
+    frontier_sizes = np.array([f.shape[0] for f in frontier_arrays])
 
-    all_points = np.vstack(front_arrays)
+    all_points = np.vstack(frontier_arrays)
     num_objectives = all_points.shape[1]
 
     grid_min = np.min(all_points, axis=0)
@@ -43,17 +44,17 @@ def compare_frontiers(
     strictly_less = all_points[:, None, :] < flat_grid[None, :, :]
     global_cell_dominance = np.all(less_equal, axis=2) & np.any(strictly_less, axis=2)
 
-    front_bounds = np.insert(np.cumsum(front_sizes)[:-1], 0, 0)
-    front_dominates_cell = np.maximum.reduceat(
-        global_cell_dominance, front_bounds, axis=0
+    frontier_bounds = np.insert(np.cumsum(frontier_sizes)[:-1], 0, 0)
+    frontier_dominates_cell = np.maximum.reduceat(
+        global_cell_dominance, frontier_bounds, axis=0
     )
 
-    grid_hypervolumes = np.mean(front_dominates_cell, axis=1)
+    grid_hypervolumes = np.mean(frontier_dominates_cell, axis=1)
 
     intersection_counts = np.dot(
-        front_dominates_cell.astype(float), front_dominates_cell.T
+        frontier_dominates_cell.astype(float), frontier_dominates_cell.T
     )
-    cells_per_front = np.sum(front_dominates_cell, axis=1)
+    cells_per_front = np.sum(frontier_dominates_cell, axis=1)
 
     coverage_matrix = np.where(
         cells_per_front[None, :] > 0,
@@ -68,11 +69,11 @@ def compare_frontiers(
             name: {
                 "grid_hypervolume": float(grid_hypervolumes[i]),
                 "coverage_over_others": {
-                    front_names[j]: float(coverage_matrix[i, j])
-                    for j in range(num_fronts)
+                    frontier_names[j]: float(coverage_matrix[i, j])
+                    for j in range(num_frontiers)
                 },
             }
-            for i, name in enumerate(front_names)
+            for i, name in enumerate(frontier_names)
         },
     }
 
@@ -100,23 +101,29 @@ def render_and_compare(exporters: dict[str, ParetoExporter]):
         max_positional_binding = max(
             max_positional_binding, exporter.max_positional_binding
         )
+    binding_range = (min_binding, max_binding)
+    positional_binding_range = (min_positional_binding, max_positional_binding)
 
     first_exporter = list(exporters.values())[0]
-    logger.info(f"[{min_positional_binding},{max_positional_binding}]")
-    first_exporter.render_target_sequence(
-        max_positional_cost, (min_positional_binding, max_positional_binding)
-    )
+    first_exporter.render_target_sequence(max_positional_cost, positional_binding_range)
 
-    fronts_cmp_file = first_exporter.output_path.parent / "pareto_comparison.json"
-    fronts = dict()
+    frontiers = dict()
     for variant, exporter in exporters.items():
         logger.info(f"Rendering variant {variant}...")
         exporter.render(
             max_cost,
-            (min_binding, max_binding),
+            binding_range,
             max_positional_cost,
-            (min_positional_binding, max_positional_binding),
+            positional_binding_range,
         )
-        fronts[variant] = exporter.frontier
+        frontiers[variant] = exporter.frontier
 
-    compare_frontiers(fronts, fronts_cmp_file)
+    compare_frontiers(
+        frontiers, first_exporter.output_path.parent / "pareto_comparison.json"
+    )
+    render_pareto_frontiers(
+        frontiers,
+        first_exporter.output_path.parent / "pareto_frontiers.png",
+        max_cost,
+        binding_range,
+    )

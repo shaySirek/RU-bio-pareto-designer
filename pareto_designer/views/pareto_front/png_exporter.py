@@ -1,13 +1,37 @@
+import re
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import matplotlib.colors as mcolors
 import seaborn as sns
 
 from pareto_designer.models.context import RunContext, ParetoResult
 
 
-_HEATMAP_FUNC_CMAP = "Reds"
-_HEATMAP_BINDING_CMAP = "Purples"
+def render_pareto_frontiers(
+    frontiers: dict[str, np.ndarray],
+    output_file: Path,
+    max_cost: float,
+    binding_range: tuple[float, float],
+):
+    fig, ax = plt.subplots(figsize=(5, 5))
+    for key, frontier in frontiers.items():
+        label = (
+            f"K={m.group(1)}" if (m := re.search(r"(?:^|__)k_([^\s_]+)", key)) else None
+        )
+        ax.scatter(frontier[:, 0], frontier[:, 1], label=label, alpha=0.8)
+
+    _set_pareto_axes(ax, max_cost, binding_range)
+    ax.legend(loc="upper right")
+
+    fig.savefig(
+        output_file,
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def render_pareto_front_png(
@@ -34,10 +58,8 @@ def render_pareto_front_png(
                 break
 
     groups = {key: (buckets[key], levels[key][1]) for key in levels}
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(5, 5))
     for label, (group_results, color) in groups.items():
-        if not group_results:
-            continue
         ax.scatter(
             [r.cost for r in group_results],
             [r.binding_score for r in group_results],
@@ -46,7 +68,7 @@ def render_pareto_front_png(
             edgecolors="black",
             linewidths=0.5,
             alpha=0.8,
-            s=60,
+            s=30,
         )
     if star:
         ax.scatter(
@@ -54,16 +76,13 @@ def render_pareto_front_png(
             star[0].binding_score,
             color="#ffd700",
             marker="*",
-            s=400,
+            s=90,
             edgecolors=star[1],
             linewidths=1.0,
             zorder=5,
         )
 
-    ax.set_xlabel("Functional Cost")
-    ax.set_ylabel("Binding Score")
-    ax.set_xlim(0.0, max_cost)
-    ax.set_ylim(*binding_range)
+    _set_pareto_axes(ax, max_cost, binding_range)
     ax.legend(title="Motif Hits", loc="upper right")
 
     fig.savefig(
@@ -72,6 +91,30 @@ def render_pareto_front_png(
         bbox_inches="tight",
     )
     plt.close(fig)
+
+
+def _set_pareto_axes(ax: Axes, max_cost: float, binding_range: tuple[float, float]):
+    x_max = max_cost * 1.05
+    min_binding, max_binding = binding_range
+    y_margin = (max_binding - min_binding) * 0.05
+    y_min = min_binding - y_margin
+    y_max = max_binding + y_margin
+    ax.set_xlabel("Functional Cost")
+    ax.set_ylabel("Binding Score")
+    ax.set_xlim(0.0, x_max)
+    ax.set_ylim(y_min, y_max)
+
+
+def _get_cmaps(
+    max_cost: float,
+    binding_range: tuple[float, float],
+):
+    return {
+        "Functinal cost": dict(cmap="Reds", norm=mcolors.Normalize(0.0, max_cost)),
+        "Binding score": dict(
+            cmap="Purples", norm=mcolors.TwoSlopeNorm(0.0, *binding_range)
+        ),
+    }
 
 
 def render_heatmap_png(
@@ -85,6 +128,8 @@ def render_heatmap_png(
 ):
     seq_len = len(binding)
     width = min(max(10, seq_len * 0.02), 40)
+    cmaps = _get_cmaps(max_cost, binding_range)
+    folder = ctx.output_path
 
     if costs is not None:
         fig, axes = plt.subplots(2, 1, figsize=(width, 2.0), sharex=True)
@@ -92,14 +137,14 @@ def render_heatmap_png(
         ax_cost, ax_binding = axes[0], axes[1]
         sns.heatmap(
             costs.reshape(1, -1),
-            cmap=_HEATMAP_FUNC_CMAP,
-            norm=mcolors.Normalize(0.0, max_cost),
+            **cmaps["Functinal cost"],
             cbar=False,
             xticklabels=False,
             yticklabels=False,
             ax=ax_cost,
         )
     else:
+        folder = folder.parent
         fig, axes = plt.subplots(1, 1, figsize=(width, 1.0), sharex=True)
         ax_binding = axes
         for s, e in ctx.orfs:
@@ -115,8 +160,7 @@ def render_heatmap_png(
 
     sns.heatmap(
         binding.reshape(1, -1),
-        cmap=_HEATMAP_BINDING_CMAP,
-        norm=mcolors.Normalize(*binding_range),
+        **cmaps["Binding score"],
         cbar=False,
         xticklabels=False,
         yticklabels=False,
@@ -140,7 +184,7 @@ def render_heatmap_png(
     ax_binding.set_xticks(ticks + 0.5)
     ax_binding.set_xticklabels(ticks, fontsize=12)
 
-    fig.savefig(ctx.output_path / f"{seq_id}_heatmap.png", dpi=300, bbox_inches="tight")
+    fig.savefig(folder / f"{seq_id}_heatmap.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -149,19 +193,15 @@ def render_heatmap_legend(
     max_cost: float,
     binding_range: tuple[float, float],
 ):
-    bars = {
-        "Functional cost": (_HEATMAP_FUNC_CMAP, (0.0, max_cost)),
-        "Binding score": (_HEATMAP_BINDING_CMAP, binding_range),
-    }
+    bars = _get_cmaps(max_cost, binding_range)
     n = len(bars)
     fig, axes = plt.subplots(1, len(bars), figsize=(4 * n, 0.5), squeeze=False)
 
     i = 0
-    for name, (cmap_name, norm_range) in bars.items():
+    for name, cmap_kwargs in bars.items():
         ax = axes[0, i]
-        norm = mcolors.Normalize(vmin=norm_range[0], vmax=norm_range[1])
         fig.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap=cmap_name),
+            plt.cm.ScalarMappable(**cmap_kwargs),
             cax=ax,
             orientation="horizontal",
         )
