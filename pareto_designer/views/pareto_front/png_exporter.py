@@ -16,7 +16,7 @@ def render_pareto_frontiers(
     max_cost: float,
     binding_range: tuple[float, float],
 ):
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(5, 4))
     for key, frontier in frontiers.items():
         label = (
             f"K={m.group(1)}" if (m := re.search(r"(?:^|__)k_([^\s_]+)", key)) else None
@@ -58,7 +58,7 @@ def render_pareto_front_png(
                 break
 
     groups = {key: (buckets[key], levels[key][1]) for key in levels}
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(5, 4))
     for label, (group_results, color) in groups.items():
         ax.scatter(
             [r.cost for r in group_results],
