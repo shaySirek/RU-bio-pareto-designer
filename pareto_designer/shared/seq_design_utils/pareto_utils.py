@@ -3,6 +3,7 @@ from pathlib import Path
 from loguru import logger
 
 import numpy as np
+from pymoo.indicators.hv import Hypervolume
 
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.views.pareto_front.png_exporter import render_pareto_frontiers
@@ -11,63 +12,62 @@ from pareto_designer.views.pareto_front.png_exporter import render_pareto_fronti
 def compare_frontiers(
     frontiers: dict[str, np.ndarray],
     output_file: Path,
-    grid_bins: int = 100,
-    alpha: float = 1.1,
-) -> dict:
+    pad: float = 0.1,
+) -> None:
     if not frontiers:
         raise ValueError("The dictionary of frontiers cannot be empty.")
-    if alpha <= 1.0:
-        raise ValueError("Alpha must be strictly greater than 1.0.")
+    if pad <= 0.0:
+        raise ValueError("Pad must be strictly positive.")
 
     frontier_names = list(frontiers.keys())
     frontier_arrays = [np.atleast_2d(frontiers[name]) for name in frontier_names]
-
     num_frontiers = len(frontier_arrays)
-    frontier_sizes = np.array([f.shape[0] for f in frontier_arrays])
-
     all_points = np.vstack(frontier_arrays)
     num_objectives = all_points.shape[1]
 
-    grid_min = np.min(all_points, axis=0)
-    grid_max = np.max(all_points, axis=0) * alpha
+    global_min = np.min(all_points, axis=0)
+    global_max = np.max(all_points, axis=0)
+    range_diff = global_max - global_min
+    range_diff[range_diff == 0] = 1.0
+    all_points_normalized = (all_points - global_min) / range_diff
+    split_indices = np.cumsum([f.shape[0] for f in frontier_arrays])[:-1]
+    normalized_frontiers = np.split(all_points_normalized, split_indices, axis=0)
+
     logger.info(
-        f"Compare frontiers using Grid Base Hyper Volume [{grid_bins=}, {grid_min=}, {grid_max=}]"
+        f"Comparing frontiers using Hypervolume [{global_min=}, {global_max=}, {pad=}]"
     )
-
-    axes = [
-        np.linspace(grid_min[d], grid_max[d], grid_bins) for d in range(num_objectives)
+    norm_ref_point = np.full(num_objectives, 1.0 + pad)
+    hv_indicator = Hypervolume(ref_point=norm_ref_point)
+    max_possible_volume = np.prod(norm_ref_point)
+    normalized_hvs = [
+        float(hv_indicator(norm_arr) / max_possible_volume)
+        for norm_arr in normalized_frontiers
     ]
-    mesh = np.meshgrid(*axes, indexing="ij")
-    flat_grid = np.stack([m.ravel() for m in mesh], axis=-1)
 
-    less_equal = all_points[:, None, :] <= flat_grid[None, :, :]
-    strictly_less = all_points[:, None, :] < flat_grid[None, :, :]
-    global_cell_dominance = np.all(less_equal, axis=2) & np.any(strictly_less, axis=2)
+    coverage_matrix = np.zeros((num_frontiers, num_frontiers))
+    for i in range(num_frontiers):
+        for j in range(num_frontiers):
+            if i == j:
+                coverage_matrix[i, j] = 1.0
+                continue
 
-    frontier_bounds = np.insert(np.cumsum(frontier_sizes)[:-1], 0, 0)
-    frontier_dominates_cell = np.maximum.reduceat(
-        global_cell_dominance, frontier_bounds, axis=0
-    )
-
-    grid_hypervolumes = np.mean(frontier_dominates_cell, axis=1)
-
-    intersection_counts = np.dot(
-        frontier_dominates_cell.astype(float), frontier_dominates_cell.T
-    )
-    cells_per_front = np.sum(frontier_dominates_cell, axis=1)
-
-    coverage_matrix = np.where(
-        cells_per_front[None, :] > 0,
-        intersection_counts / cells_per_front[None, :],
-        0.0,
-    )
-    np.fill_diagonal(coverage_matrix, 1.0)
+            combined_norm = np.vstack(
+                (normalized_frontiers[i], normalized_frontiers[j])
+            )
+            hv_union = hv_indicator(combined_norm)
+            hv_i_raw = normalized_hvs[i] * max_possible_volume
+            hv_j_raw = normalized_hvs[j] * max_possible_volume
+            intersection_volume = max(0.0, hv_i_raw + hv_j_raw - hv_union)
+            if normalized_hvs[j] > 0:
+                coverage_matrix[i, j] = float(intersection_volume / hv_j_raw)
+            else:
+                coverage_matrix[i, j] = 0.0
 
     output_data = {
-        "grid_bounds": {"min": grid_min.tolist(), "max": grid_max.tolist()},
+        "global_bounds": {"min": global_min.tolist(), "max": global_max.tolist()},
         "metrics": {
             name: {
-                "grid_hypervolume": float(grid_hypervolumes[i]),
+                "normalized_hypervolume": normalized_hvs[i],
                 "coverage_over_others": {
                     frontier_names[j]: float(coverage_matrix[i, j])
                     for j in range(num_frontiers)
@@ -79,8 +79,6 @@ def compare_frontiers(
 
     with output_file.open("w") as f:
         json.dump(output_data, f, indent=4)
-
-    return output_data
 
 
 def render_and_compare(exporters: dict[str, ParetoExporter]):
