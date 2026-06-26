@@ -12,7 +12,6 @@ from pareto_designer.algorithms.fsm_reduction.colorless_db_fsm_reducer import (
 from pareto_designer.shared.fsm_utils.fsm_factory import get_binding_motif_fsm
 from pareto_designer.shared.csv_writer import write_results_stream
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
@@ -28,7 +27,8 @@ def parse_args():
         default=ScoreSpaceOption.LogExp.value,
         help="Space of binding scores",
     )
-    parser.add_argument("--validate", default=False, action="store_true")
+    parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--output-folder",
         "-o",
@@ -43,30 +43,25 @@ def parse_args():
 def main():
     args = parse_args()
 
-    motif_ctx, db_fsm, binding_score_map = get_binding_motif_fsm(
-        args.matrix_id, StrandForBindingScore.Double
-    )
-    binding_score_space_option = ScoreSpaceOption(args.binding_score_space)
-    metric = "SSE"
-    if binding_score_space_option == ScoreSpaceOption.LogExp:
-        metric += " (log1p)"
-
-    base_folder = (
-        Path(args.output_folder) / args.binding_score_space / motif_ctx.matrix_id
-    )
+    base_folder = Path(args.output_folder) / args.binding_score_space / args.matrix_id
     base_folder.mkdir(parents=True, exist_ok=True)
     reduced_fsms_file = base_folder / "trace.csv"
     plot_file = base_folder / "reduction_process.png"
 
-    reduced_fsms_gen = fsm_reduction_gen(
-        motif_ctx,
-        db_fsm,
-        binding_score_map,
-        binding_score_space_option,
-        args.validate,
-    )
-    write_results_stream(reduced_fsms_gen, reduced_fsms_file)
-    plot(reduced_fsms_file, plot_file, metric)
+    if not args.dry_run:
+        motif_ctx, db_fsm, binding_score_map = get_binding_motif_fsm(
+            args.matrix_id, StrandForBindingScore.Double
+        )
+        reduced_fsms_gen = fsm_reduction_gen(
+            motif_ctx,
+            db_fsm,
+            binding_score_map,
+            ScoreSpaceOption(args.binding_score_space),
+            args.validate,
+        )
+        write_results_stream(reduced_fsms_gen, reduced_fsms_file)
+
+    plot(reduced_fsms_file, plot_file)
 
 
 def fsm_reduction_gen(
@@ -84,8 +79,6 @@ def fsm_reduction_gen(
         validate=validate,
     )
     for i, (reduced_fsm, err, _) in enumerate(fsm_reducer.find_reduced_fsms()):
-        if binding_score_space_option == ScoreSpaceOption.LogExp:
-            err = np.log1p(err)
         yield {
             "step": i + 1,
             "n_states": len(reduced_fsm.V),
@@ -93,12 +86,27 @@ def fsm_reduction_gen(
         }
 
 
-def plot(reduced_fsms_file: Path, plot_file: Path, metric: str):
+def plot(
+    reduced_fsms_file: Path,
+    plot_file: Path,
+    part_at: int = 2048,
+    min_size: int = 256,
+):
     df = pd.read_csv(reduced_fsms_file)
+    msk = df["n_states"] >= part_at
+    df_plot(df[msk], plot_file.with_stem(f"{plot_file.stem}_beyond_{part_at}"))
+    df_plot(
+        df[~msk & (df["n_states"] >= min_size)],
+        plot_file.with_stem(f"{plot_file.stem}_until_{part_at}"),
+    )
+
+
+def df_plot(df: pd.DataFrame, plot_file: Path):
     fig, ax = plt.subplots(figsize=(5, 4))
+
     ax.plot(df["n_states"], df["err"])
     ax.set_xlabel("# States")
-    ax.set_ylabel(metric)
+    ax.set_ylabel("SSE")
 
     ax.set_xscale("log", base=2)
     ax.xaxis.set_major_formatter(ScalarFormatter())
