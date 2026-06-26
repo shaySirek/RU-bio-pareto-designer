@@ -1,5 +1,6 @@
 from typing import Protocol
 from dataclasses import dataclass
+import math
 
 import numpy as np
 
@@ -39,14 +40,15 @@ class PowerLawSUS(SamplingMethod):
     ) -> np.ndarray:
         return self._sample(scores[indices], position)
 
-    def _sample(self, scores: np.ndarray, position: int) -> np.ndarray:
+    def _sample(self, scores: np.ndarray, i: int) -> np.ndarray:
         n = len(scores)
         # Unbounded or less than bound (k)
         if self.k == 0 or n <= self.k:
             return scores
 
-        avg_costs = -scores[:, 0] / position
-        weights = np.power(avg_costs + 1, -self.alpha)
+        avg_costs = -scores[:, 0] / i
+        dyn_exp = -self.alpha * math.log(i + 1)
+        weights = np.power(avg_costs + 1, dyn_exp)
 
         # Stochastic Universal Sampling (SUS)
         cum_weights = np.cumsum(weights)
