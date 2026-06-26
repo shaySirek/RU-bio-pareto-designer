@@ -5,23 +5,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 import seaborn as sns
 
 from pareto_designer.models.context import RunContext, ParetoResult
 
 
-def render_pareto_frontiers(
-    frontiers: dict[str, np.ndarray],
+def _get_front_label(key: str) -> str | None:
+    return f"K={m.group(1)}" if (m := re.search(r"(?:^|__)k_([^\s_]+)", key)) else None
+
+
+def render_pareto_fronts(
+    fronts: dict[str, np.ndarray],
     output_file: Path,
     max_cost: float,
     binding_range: tuple[float, float],
 ):
     fig, ax = plt.subplots(figsize=(5, 4))
-    for key, frontier in frontiers.items():
-        label = (
-            f"K={m.group(1)}" if (m := re.search(r"(?:^|__)k_([^\s_]+)", key)) else None
-        )
-        ax.scatter(frontier[:, 0], frontier[:, 1], label=label, alpha=0.8)
+    for key, front in fronts.items():
+        ax.scatter(front[:, 0], front[:, 1], label=_get_front_label(key), alpha=0.8)
 
     _set_pareto_axes(ax, max_cost, binding_range)
     ax.legend(loc="upper right")
@@ -86,7 +88,7 @@ def render_pareto_front_png(
     ax.legend(title="Motif Hits", loc="upper right")
 
     fig.savefig(
-        ctx.output_path / "pareto_frontier.png",
+        ctx.output_path / "pareto_front.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -103,18 +105,6 @@ def _set_pareto_axes(ax: Axes, max_cost: float, binding_range: tuple[float, floa
     ax.set_ylabel("Binding Score")
     ax.set_xlim(0.0, x_max)
     ax.set_ylim(y_min, y_max)
-
-
-def _get_cmaps(
-    max_cost: float,
-    binding_range: tuple[float, float],
-):
-    return {
-        "Functinal cost": dict(cmap="Reds", norm=mcolors.Normalize(0.0, max_cost)),
-        "Binding score": dict(
-            cmap="Purples", norm=mcolors.TwoSlopeNorm(0.0, *binding_range)
-        ),
-    }
 
 
 def render_heatmap_png(
@@ -210,5 +200,102 @@ def render_heatmap_legend(
 
     fig.savefig(
         ctx.output_path.parent / "heatmap_legend.png", dpi=300, bbox_inches="tight"
+    )
+    plt.close(fig)
+
+
+def _get_cmaps(
+    max_cost: float,
+    binding_range: tuple[float, float],
+):
+    return {
+        "Functinal cost": dict(cmap="Reds", norm=mcolors.Normalize(0.0, max_cost)),
+        "Binding score": dict(
+            cmap="Purples", norm=mcolors.TwoSlopeNorm(0.0, *binding_range)
+        ),
+    }
+
+
+def render_motif_cost_dist(fronts: dict[str, np.ndarray], output_file: Path):
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    all_hits = set()
+    for front in fronts.values():
+        all_hits.update(front[:, 2].astype(int))
+
+    sorted_hits = np.sort(list(all_hits))
+    x_positions = np.arange(len(sorted_hits))
+    legend_elements = []
+
+    for idx, (key, front) in enumerate(fronts.items()):
+        costs = front[:, 0]
+        motif_hits = front[:, 2].astype(int)
+        current_color = f"C{idx % 10}"
+
+        grouped_data = []
+        positions_to_plot = []
+
+        for pos, hit in zip(x_positions, sorted_hits):
+            mask = motif_hits == hit
+            if np.any(mask):
+                sub_costs = costs[mask]
+                offset = (idx - (len(fronts) - 1) / 2) * 0.15
+                actual_pos = pos + offset
+
+                grouped_data.append(sub_costs)
+                positions_to_plot.append(actual_pos)
+
+                jitter = np.random.uniform(-0.02, 0.02, size=len(sub_costs))
+                ax.scatter(
+                    np.repeat(actual_pos, len(sub_costs)) + jitter,
+                    sub_costs,
+                    color=current_color,
+                    alpha=0.5,
+                    s=12,
+                    edgecolors="#2c3e50",
+                    linewidths=0.5,
+                    zorder=3,
+                )
+
+        bp = ax.boxplot(
+            grouped_data,
+            positions=positions_to_plot,
+            widths=0.12,
+            patch_artist=True,
+            manage_ticks=False,
+            showfliers=False,
+        )
+
+        for box in bp["boxes"]:
+            box.set_facecolor(current_color)
+            box.set_alpha(0.4)
+            box.set_edgecolor("#2c3e50")
+
+        for whisker in bp["whiskers"]:
+            whisker.set(color="#7f8c8d", linestyle="-", alpha=0.5)
+        for cap in bp["caps"]:
+            cap.set(color="#7f8c8d", alpha=0.5)
+        for median in bp["medians"]:
+            median.set(color="#2c3e50", linewidth=1.5)
+
+        legend_elements.append(
+            mpatches.Patch(
+                facecolor=current_color,
+                alpha=0.6,
+                edgecolor="#2c3e50",
+                label=_get_front_label(key),
+            )
+        )
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([str(h) for h in sorted_hits])
+    ax.set_xlabel("# Motif Hits")
+    ax.set_ylabel("Functional Cost")
+    ax.legend(handles=legend_elements, loc="upper right")
+
+    fig.savefig(
+        output_file,
+        dpi=300,
+        bbox_inches="tight",
     )
     plt.close(fig)

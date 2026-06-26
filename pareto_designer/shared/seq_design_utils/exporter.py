@@ -33,7 +33,7 @@ class ParetoExporter:
     def __init__(self, ctx: DesignContext):
         self.ctx = ctx
         self._results: list[ParetoResult] = []
-        self._frontier: np.ndarray = None
+        self._front: np.ndarray = None
         self.__motif_file: Path = None
         self.output_path.mkdir(parents=True, exist_ok=True)
 
@@ -142,16 +142,17 @@ class ParetoExporter:
         self._run_ctx.n_solutions = len(self._results)
 
     @property
-    def frontier(self) -> np.ndarray:
-        if self._frontier is None:
-            self._frontier = np.array(
-                [[r.cost, r.binding_score] for r in self._results], dtype=float
+    def front(self) -> np.ndarray:
+        if self._front is None:
+            self._front = np.array(
+                [[r.cost, r.binding_score, r.n_motif_hits] for r in self._results],
+                dtype=float,
             )
-        return self._frontier
+        return self._front
 
     @property
     def max_cost(self) -> float:
-        return np.max(self.frontier[:, 0])
+        return np.max(self.front[:, 0])
 
     @property
     def max_positional_cost(self) -> float:
@@ -159,11 +160,11 @@ class ParetoExporter:
 
     @property
     def min_binding(self) -> float:
-        return np.min(self.frontier[:, 1])
+        return np.min(self.front[:, 1])
 
     @property
     def max_binding(self) -> float:
-        return np.max(self.frontier[:, 1])
+        return np.max(self.front[:, 1])
 
     @property
     def min_positional_binding(self) -> float:

@@ -64,7 +64,7 @@ def find_po(
     position: int = 0,
 ) -> tuple[list[T_SOLUTION], list[list[Any]]]:
     """
-    Identifies the Pareto-optimal frontier from a set of candidates and
+    Identifies the Pareto-optimal front from a set of candidates and
     applies sampling.
 
     Args:
