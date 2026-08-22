@@ -4,7 +4,6 @@ from collections import namedtuple
 from typing import Generator
 
 from pareto_designer.algorithms.seq_design.dp_matrix import DP_Matrix
-from pareto_designer.algorithms.seq_design.util import find_po_from_sorted_iters
 from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
 
 MockFSM = namedtuple("MockFSM", ["Sigma", "V", "v_init"])
@@ -25,6 +24,9 @@ def test_env() -> Generator[DP_Matrix, None, None]:
     fsm = MockFSM(Sigma={"A", "C", "G", "T"}, V={"q0", "q1", "q2", "q3"}, v_init="q0")
     checkpoint_dir = ".test_dp_matrix_types"
     dp = DP_Matrix(fsm, n=5, flush_every=2, checkpoint_dir=checkpoint_dir)
+    dp.start_row()
+    dp.update(fsm.v_init, [(0.0, 0.0)], None)
+    dp.end_row(0)
     yield dp
 
     if dp.checkpoint_path.exists():
@@ -54,7 +56,7 @@ def test_reconstructed_sequence_costs(
         dp.update(q1, [(current_f, 0.0)], [[((u_prev, char), 0)]])
         dp.end_row(i)
 
-    po_set = dp.reconstruct_po_set(find_po_from_sorted_iters)
+    po_set = dp.reconstruct_po_set()
     reconstructed_seq, _ = list(po_set)[0]
 
     costs = exact_match_fn.get_costs(reconstructed_seq)
@@ -96,7 +98,7 @@ def test_exact_match_po_integration(
 
         dp.end_row(i)
 
-    po_set = dp.reconstruct_po_set(find_po_from_sorted_iters)
+    po_set = dp.reconstruct_po_set()
     results = {res[0]: res[1] for res in po_set}
 
     assert len(results) == 2
@@ -118,7 +120,7 @@ def test_full_reconstruction(test_env: DP_Matrix):
         dp.update(q1, [(float(i), 0.0)], [[((u_prev, "A"), 0)]])
         dp.end_row(i)
 
-    po_set = dp.reconstruct_po_set(find_po_from_sorted_iters)
+    po_set = dp.reconstruct_po_set()
 
     assert len(po_set) == 1
     seq, score = list(po_set)[0]
