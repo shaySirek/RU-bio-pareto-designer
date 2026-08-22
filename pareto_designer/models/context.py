@@ -12,10 +12,16 @@ from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 @dataclass
 class FSMContext:
     motif: BindingMotif
+    origin_binding_score_map: dict[str, float]
     binding_score_map: dict[str, float]
     binding_score_space: Type[ScoreSpace]
+    fsm_binding_score_err: float
     fsm: FSM
     fsm_id: str
+    reduce_fsm_by: float
+    db_fsm_size: int
+    hit_pvalue: float = 2e-3
+    reported_size: int | None = None
 
     @property
     def motif_id(self) -> str:
@@ -31,6 +37,8 @@ class FSMContext:
 
     @property
     def size(self) -> int:
+        if self.reported_size is not None:
+            return self.reported_size
         return len(self.fsm.V)
 
 
@@ -74,6 +82,7 @@ class RunContext:
 class ParetoResult:
     cost: float
     binding_score: float
+    origin_binding_score: float
     id: str
     url: str
     txt_file: str

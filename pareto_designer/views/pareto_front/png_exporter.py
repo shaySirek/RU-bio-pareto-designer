@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 
 import numpy as np
@@ -11,21 +10,19 @@ import seaborn as sns
 from pareto_designer.models.context import RunContext, ParetoResult
 
 
-def _get_front_label(key: str) -> str | None:
-    return f"K={m.group(1)}" if (m := re.search(r"(?:^|__)k_([^\s_]+)", key)) else None
-
-
 def render_pareto_fronts(
     fronts: dict[str, np.ndarray],
     output_file: Path,
     max_cost: float,
     binding_range: tuple[float, float],
+    hit_thresholds: list[float] | None = None,
 ):
     fig, ax = plt.subplots(figsize=(5, 4))
     for key, front in fronts.items():
-        ax.scatter(front[:, 0], front[:, 1], label=_get_front_label(key), alpha=0.8)
+        ax.scatter(front[:, 0], front[:, 1], label=key, alpha=0.8)
 
-    _set_pareto_axes(ax, max_cost, binding_range)
+    _draw_hit_thresholds(ax, hit_thresholds)
+    _set_pareto_axes(ax, max_cost, binding_range, hit_thresholds)
     ax.legend(loc="upper right")
 
     fig.savefig(
@@ -41,6 +38,7 @@ def render_pareto_front_png(
     results: list[ParetoResult],
     max_cost: float,
     binding_range: tuple[float, float],
+    hit_thresholds: list[float] | None = None,
 ):
     min_hits = min(r.n_motif_hits for r in results)
     levels = {
@@ -84,7 +82,8 @@ def render_pareto_front_png(
             zorder=5,
         )
 
-    _set_pareto_axes(ax, max_cost, binding_range)
+    _draw_hit_thresholds(ax, hit_thresholds)
+    _set_pareto_axes(ax, max_cost, binding_range, hit_thresholds)
     ax.legend(title="Motif Hits", loc="upper right")
 
     fig.savefig(
@@ -95,10 +94,37 @@ def render_pareto_front_png(
     plt.close(fig)
 
 
-def _set_pareto_axes(ax: Axes, max_cost: float, binding_range: tuple[float, float]):
+def _draw_hit_thresholds(ax: Axes, hit_thresholds: list[float] | None):
+    if not hit_thresholds:
+        return
+    for n_hits, threshold in enumerate(hit_thresholds, start=1):
+        ax.axhline(threshold, linestyle="--", color="gray", linewidth=0.8, zorder=1)
+        ax.text(
+            0.01,
+            threshold,
+            f"{n_hits} hit" if n_hits == 1 else f"{n_hits} hits",
+            transform=ax.get_yaxis_transform(),
+            va="bottom",
+            ha="left",
+            fontsize=8,
+            color="gray",
+        )
+
+
+def _set_pareto_axes(
+    ax: Axes,
+    max_cost: float,
+    binding_range: tuple[float, float],
+    hit_thresholds: list[float] | None = None,
+):
     x_max = max_cost * 1.05
     min_binding, max_binding = binding_range
+    if hit_thresholds:
+        min_binding = min(min_binding, *hit_thresholds)
+        max_binding = max(max_binding, *hit_thresholds)
     y_margin = (max_binding - min_binding) * 0.05
+    if y_margin == 0:
+        y_margin = 1.0
     y_min = min_binding - y_margin
     y_max = max_binding + y_margin
     ax.set_xlabel("Functional Cost")
@@ -283,7 +309,7 @@ def render_motif_cost_dist(fronts: dict[str, np.ndarray], output_file: Path):
                 facecolor=current_color,
                 alpha=0.6,
                 edgecolor="#2c3e50",
-                label=_get_front_label(key),
+                label=key,
             )
         )
 
@@ -297,5 +323,22 @@ def render_motif_cost_dist(fronts: dict[str, np.ndarray], output_file: Path):
         output_file,
         dpi=300,
         bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def render_scatter_binding_scores(
+    ctx: RunContext,
+    results: list[ParetoResult],
+):
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.scatter(
+        [r.origin_binding_score for r in results],
+        [r.binding_score for r in results],
+    )
+    ax.set_xlabel("Binding Score")
+    ax.set_ylabel("Approximate Binding Score")
+    fig.savefig(
+        ctx.output_path / "binding_scores_scatter.png", dpi=300, bbox_inches="tight"
     )
     plt.close(fig)

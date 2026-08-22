@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from pareto_designer.shared.seq_design_utils.score_function_builder import (
     ScoreFunctionBuilder,
@@ -12,16 +13,17 @@ from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigne
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
 from pareto_designer.shared.seq_design_utils.pareto_utils import render_and_compare
+from pareto_designer.shared.csv_writer import write_results_stream
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--target-sequence",
         "-s",
         type=Path,
         required=True,
-        help="Target sequence (fasta file)",
+        help="Target sequence (fasta file or directory of *.txt files)",
     )
     parser.add_argument(
         "--matrix-id",
@@ -51,23 +53,30 @@ def parse_args():
     parser.add_argument(
         "--reduce-fsm-by",
         type=float,
-        default=0.875,
-        help="Specifies the percentage of reduction in size of the FSM (default is 0.875)",
+        nargs="+",
+        default=[0.875],
+        help="FSM size reduction ratios (0 = DB FSM). Default: 0.875 (8-fold)",
+    )
+    parser.add_argument(
+        "--hit-pval",
+        type=float,
+        default=2e-3,
+        help="Motif hit p-value threshold (default: 2e-3)",
     )
     parser.add_argument(
         "--budgets",
         "-k",
         type=int,
         nargs="+",
-        default=[50, 150, 250],
-        help="Specifies the maximum number of non-dominated scores in each cell of the DP matrix (default: 50, 150, 250)",
+        default=[50, 100, 150],
+        help="Specifies the maximum number of non-dominated scores in each cell of the DP matrix (default: 50, 100, 150)",
     )
     parser.add_argument(
         "--sampler-alpha",
-        type=float,
+        type=str,
         nargs="+",
-        default=[1.0, 0.7, 0.5],
-        help="Specifies the exponent for Power-Law weighting of functional costs (default: 1.0, 0.7, 0.5)",
+        default=["0.0", "1.0", "1.0_log_pos", "2.0_log_pos"],
+        help="Specifies the exponent for the inverse Power-Law weighting of functional costs (default: 0.0, 1.0, 1.0_log_pos, 2.0_log_pos)",
     )
     parser.add_argument(
         "--exact-match-cost",
@@ -100,10 +109,12 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     input_path = Path(args.target_sequence)
-    seq_files = [input_path] if input_path.is_file() else input_path.glob("*.txt")
+    seq_files: list[Path] = (
+        [input_path] if input_path.is_file() else sorted(input_path.glob("*.txt"))
+    )
 
     score_function_builder = (
         ScoreFunctionBuilder()
@@ -115,27 +126,39 @@ def main():
         FSMBuilder()
         .with_matrix_id(args.matrix_id)
         .with_binding_score_space(ScoreSpaceOption(args.binding_score_space))
+        .with_hit_pvalue(args.hit_pval)
         .with_fsm_reduction(
             max_total_error=args.reduce_fsm_max_error,
             reduction_ratio_threshold=args.reduce_fsm_by,
         )
     )
-    seq_designer = (
-        SequenceDesigner()
-        .with_score_function_builder(score_function_builder)
-        .with_fsm_builder(fsm_builder)
+    seq_designer = SequenceDesigner().with_score_function_builder(
+        score_function_builder
     )
+    fsm_contexts = list(fsm_builder.iter_contexts(dry_run=args.dry_run))
+    all_rows: list[dict[str, Any]] = []
 
     for seq_file in seq_files:
         exporters: dict[str, ParetoExporter] = dict()
-        for k in args.budgets:
-            for alpha in args.sampler_alpha:
-                sampler = PowerLawSUS(k, alpha)
-                exporter = (
-                    seq_designer.with_target_sequence(seq_file)
-                    .with_sampler(sampler)
-                    .run(dry_run=args.dry_run)
-                )
-                exporters[sampler.params] = exporter
+        for fsm_ctx in fsm_contexts:
+            seq_designer.with_target_sequence(seq_file).with_fsm_context(fsm_ctx)
+            for k in args.budgets:
+                for exp_str in args.sampler_alpha:
+                    alpha = float(exp_str.split("_")[0])
+                    use_dynamic_log_position_exponent = "_log_pos" in exp_str
+                    sampler = PowerLawSUS(k, alpha, use_dynamic_log_position_exponent)
+                    exporter = seq_designer.with_sampler(sampler).run(
+                        dry_run=args.dry_run
+                    )
+                    exporters[f"{fsm_ctx.fsm_id}__{sampler.params}"] = exporter
 
-        render_and_compare(exporters)
+        all_rows.extend(render_and_compare(exporters))
+
+    if all_rows:
+        write_results_stream(
+            iter(all_rows), Path("designer_results") / "pareto_comparison.csv"
+        )
+
+
+if __name__ == "__main__":
+    main()

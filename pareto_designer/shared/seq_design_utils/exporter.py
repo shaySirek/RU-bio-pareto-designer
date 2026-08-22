@@ -16,7 +16,7 @@ from pareto_designer.models.context import (
     FSMContext,
 )
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
-from pareto_designer.shared.binding_utils import get_binding
+from pareto_designer.shared.binding_utils import get_binding, get_total_binding
 from pareto_designer.shared.parsing import write_sequence
 from pareto_designer.views.pareto_front.html_exporter import (
     render_solution_html,
@@ -26,6 +26,7 @@ from pareto_designer.views.pareto_front.png_exporter import (
     render_heatmap_png,
     render_pareto_front_png,
     render_heatmap_legend,
+    render_scatter_binding_scores,
 )
 
 
@@ -97,13 +98,21 @@ class ParetoExporter:
         positional_objectives = np.column_stack((costs, binding))
         np.save(sol_positional_objectives_file, positional_objectives)
 
+        origin_binding_score = get_total_binding(
+            sequence, self._fsm_ctx, use_origin=True
+        )
         motif_hits = get_motif_hits(
-            sol_id, sol_fasta_file, self._fsm_ctx.motif, self._motif_file
+            sol_id,
+            sol_fasta_file,
+            self._fsm_ctx.motif,
+            self._motif_file,
+            pval=self._fsm_ctx.hit_pvalue,
         )
 
         return ParetoResult(
             cost=float(functional_cost),
             binding_score=float(binding_score),
+            origin_binding_score=float(origin_binding_score),
             id=sol_id,
             url=f"{sol_id}_details.html",
             txt_file=sol_txt_file.name,
@@ -123,6 +132,7 @@ class ParetoExporter:
                 "runtime": self._run_ctx.runtime,
                 "n_solutions": len(self._results),
                 "target_id": self._run_ctx.target_sequence_id,
+                "fsm_binding_score_err": self._fsm_ctx.fsm_binding_score_err,
             },
             "results": [asdict(res) for res in self._results],
         }
@@ -137,6 +147,8 @@ class ParetoExporter:
 
         meta = data.get("metadata", {})
         self._run_ctx.runtime = meta.get("runtime", "-")
+        if "fsm_binding_score_err" in meta:
+            self._fsm_ctx.fsm_binding_score_err = meta["fsm_binding_score_err"]
         self._results = [ParetoResult(**d) for d in data.get("results", [])]
         self._results.sort(key=lambda x: x.id)
         self._run_ctx.n_solutions = len(self._results)
@@ -152,27 +164,51 @@ class ParetoExporter:
 
     @property
     def max_cost(self) -> float:
+        if not self._results:
+            return 0.0
         return np.max(self.front[:, 0])
 
     @property
     def max_positional_cost(self) -> float:
+        if not self._results:
+            return 0.0
         return max(r.max_positional_cost for r in self._results)
 
     @property
     def min_binding(self) -> float:
+        if not self._results:
+            return 0.0
         return np.min(self.front[:, 1])
 
     @property
     def max_binding(self) -> float:
+        if not self._results:
+            return 0.0
         return np.max(self.front[:, 1])
 
     @property
     def min_positional_binding(self) -> float:
+        if not self._results:
+            return 0.0
         return min(r.min_positional_binding for r in self._results)
 
     @property
     def max_positional_binding(self) -> float:
+        if not self._results:
+            return 0.0
         return max(r.max_positional_binding for r in self._results)
+
+    @property
+    def binding_score_sse(self) -> float:
+        if not self._results:
+            return float("nan")
+        origin = np.array([r.origin_binding_score for r in self._results], dtype=float)
+        approx = np.array([r.binding_score for r in self._results], dtype=float)
+        return float(np.sum(np.square(approx - origin)))
+
+    @property
+    def fsm_binding_score_err(self) -> float:
+        return self._fsm_ctx.fsm_binding_score_err
 
     def render(
         self,
@@ -180,6 +216,7 @@ class ParetoExporter:
         binding_range: tuple[float, float],
         max_positional_cost: float,
         positional_binding_range: tuple[float, float],
+        hit_thresholds: list[float] | None = None,
     ):
         if not self._results:
             return
@@ -192,8 +229,12 @@ class ParetoExporter:
                     self._results,
                     max_cost,
                     binding_range,
+                    hit_thresholds,
                 ),
                 executor.submit(render_pareto_front_html, self._run_ctx, self._results),
+                executor.submit(
+                    render_scatter_binding_scores, self._run_ctx, self._results
+                ),
             ]
             tasks.extend(
                 [
@@ -221,7 +262,11 @@ class ParetoExporter:
 
         binding = get_binding(sequence, self._fsm_ctx)
         motif_hits = get_motif_hits(
-            seq_id, seq_fasta_file, self._fsm_ctx.motif, self._motif_file
+            seq_id,
+            seq_fasta_file,
+            self._fsm_ctx.motif,
+            self._motif_file,
+            pval=self._fsm_ctx.hit_pvalue,
         )
 
         render_heatmap_png(

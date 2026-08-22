@@ -204,7 +204,7 @@ _*.py
 
 # Project related
 bio_data/
-*_results/
+*results*/
 experiments/
 plots/
 FSMs/

@@ -22,18 +22,23 @@ class SamplingMethod(Protocol):
 class PowerLawSUS(SamplingMethod):
     """
     Stochastic Universal Sampling (SUS) with fitness values calculated by
-    applying the Power-Law distribution on the average functional cost per bp.
+    applying the inverse Power-Law distribution on the average functional cost per bp.
 
     Args:
         k: The number of solutions to sample.
-        alpha: Exponent for the Power-Law weighting.
+        alpha: Exponent for the inverse Power-Law weighting.
+        use_dynamic_log_position_exponent: Whether to multiply the exponent by log(position + 1).
     """
 
     alpha: float
+    use_dynamic_log_position_exponent: bool
 
     @property
     def params(self) -> str:
-        return f"k_{self.k}__alpha_{self.alpha}"
+        params = f"k_{self.k}__alpha_{self.alpha}"
+        if self.use_dynamic_log_position_exponent:
+            params += "_log_pos"
+        return params
 
     def __call__(
         self, scores: np.ndarray, indices: np.ndarray, position: int
@@ -46,9 +51,12 @@ class PowerLawSUS(SamplingMethod):
         if self.k == 0 or n <= self.k:
             return scores
 
+        # Weighting function
         avg_costs = -scores[:, 0] / i
-        dyn_exp = -self.alpha * math.log(i + 1)
-        weights = np.power(avg_costs + 1, dyn_exp)
+        exp = -self.alpha
+        if self.use_dynamic_log_position_exponent:
+            exp *= math.log(i + 1)
+        weights = np.power(avg_costs + 1, exp)
 
         # Stochastic Universal Sampling (SUS)
         cum_weights = np.cumsum(weights)
@@ -61,7 +69,7 @@ class PowerLawSUS(SamplingMethod):
         return scores[unique_indices]
 
 
-NO_SAMPLING: SamplingMethod = PowerLawSUS(0, 1.0)
+NO_SAMPLING: SamplingMethod = PowerLawSUS(0, 1.0, False)
 
 
 @dataclass

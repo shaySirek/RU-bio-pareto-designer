@@ -41,6 +41,10 @@ class SequenceDesigner:
         self._fsm_ctx = None
         return self
 
+    def with_fsm_context(self, fsm_ctx: FSMContext) -> "SequenceDesigner":
+        self._fsm_ctx = fsm_ctx
+        return self
+
     def with_sampler(self, sampler: SamplingMethod) -> "SequenceDesigner":
         self._sampler = sampler
         return self
