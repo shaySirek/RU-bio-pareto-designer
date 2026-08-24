@@ -20,7 +20,9 @@ from pareto_designer.algorithms.seq_design.util import (
 )
 
 ITEM_SIZE = 12  # 4 bytes for each index in the 3-tuple
-MAX_FILE_SIZE = 16 * (1024**2)  # 16MB
+# Target size of each on-disk back-pointer chunk.
+# Reconstruction loads one chunk at a time, so this also bounds peak RAM.
+MAX_FILE_SIZE = 32 * (1024**2)  # 32MB
 PTR_META_DTYPE = np.dtype(
     [("v_idx", np.int32), ("j", np.int32), ("start", np.int32), ("count", np.int32)]
 )
@@ -29,7 +31,8 @@ PTR_META_DTYPE = np.dtype(
 def get_flush_every(fsm: FSM, limit_solutions: int) -> int:
     limit_solutions = limit_solutions or 256
     row_size_in_bytes = len(fsm.V) * limit_solutions * ITEM_SIZE
-    return int(MAX_FILE_SIZE / row_size_in_bytes)
+    # A single DP row can exceed MAX_FILE_SIZE (large |V| and k).
+    return max(1, int(MAX_FILE_SIZE / row_size_in_bytes))
 
 
 class BackPointer:

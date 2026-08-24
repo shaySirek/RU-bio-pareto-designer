@@ -3,7 +3,12 @@ import shutil
 from collections import namedtuple
 from typing import Generator
 
-from pareto_designer.algorithms.seq_design.dp_matrix import DP_Matrix
+from pareto_designer.algorithms.seq_design.dp_matrix import (
+    DP_Matrix,
+    ITEM_SIZE,
+    MAX_FILE_SIZE,
+    get_flush_every,
+)
 from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
 
 MockFSM = namedtuple("MockFSM", ["Sigma", "V", "v_init"])
@@ -31,6 +36,14 @@ def test_env() -> Generator[DP_Matrix, None, None]:
 
     if dp.checkpoint_path.exists():
         shutil.rmtree(dp.checkpoint_path.parent)
+
+
+def test_get_flush_every_at_least_one():
+    """A single DP row can exceed MAX_FILE_SIZE; flush_every must stay >= 1."""
+    k = 100
+    num_states = (MAX_FILE_SIZE // (k * ITEM_SIZE)) + 1
+    fsm = MockFSM(Sigma={"A", "C", "G", "T"}, V=set(range(num_states)), v_init=0)
+    assert get_flush_every(fsm, k) == 1
 
 
 def test_reconstructed_sequence_costs(
