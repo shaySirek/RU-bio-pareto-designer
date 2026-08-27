@@ -30,8 +30,8 @@ def render_solution_html(
         f.write(html_out)
 
 
-def render_pareto_front_html(ctx: RunContext, results: list[ParetoResult]):
-    template = _get_env().get_template("pareto_front.html")
+def render_pareto_frontier_html(ctx: RunContext, results: list[ParetoResult]):
+    template = _get_env().get_template("pareto_frontier.html")
     filename = ctx.output_path / "index.html"
 
     html_out = template.render(ctx=ctx, results=results)
@@ -39,4 +39,4 @@ def render_pareto_front_html(ctx: RunContext, results: list[ParetoResult]):
     with filename.open("w", encoding="utf-8") as f:
         f.write(html_out)
 
-    logger.info(f"Pareto front exported to {filename}")
+    logger.info(f"Pareto frontier exported to {filename}")

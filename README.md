@@ -73,7 +73,7 @@ designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/PowerLawSUS/<sampler_para
 
 Comparison files for one CLI invocation are written at the common parent of those run directories:
 
-- `pareto_fronts.png`, `motif_cost_dists.png`
+- `pareto_frontiers.png`, `motif_cost_dists.png`
 - `pareto_comparison.json` — pairwise coverage and normalized hypervolume
 - `pareto_comparison.csv` — per-run `k`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, binding-score SSE, FSM reduction error, and 2-objective hypervolume (cost and binding, both minimized)
 

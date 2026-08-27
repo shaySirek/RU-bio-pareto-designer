@@ -12,26 +12,26 @@ from pareto_designer.shared.binding_utils import motif_hit_binding_thresholds
 from pareto_designer.shared.csv_writer import write_results_stream
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
-from pareto_designer.views.pareto_front.png_exporter import (
-    render_pareto_fronts,
+from pareto_designer.views.pareto_frontier.png_exporter import (
+    render_pareto_frontiers,
     render_motif_cost_dist,
 )
 
 
-def compare_fronts(
-    fronts: dict[str, np.ndarray],
+def compare_frontiers(
+    frontiers: dict[str, np.ndarray],
     output_file: Path,
     pad: float = 0.1,
 ) -> dict[str, float]:
-    if not fronts:
-        raise ValueError("The dictionary of fronts cannot be empty.")
+    if not frontiers:
+        raise ValueError("The dictionary of frontiers cannot be empty.")
     if pad <= 0.0:
         raise ValueError("Pad must be strictly positive.")
 
-    front_names = list(fronts.keys())
-    front_arrays = [np.atleast_2d(fronts[name])[:, :2] for name in front_names]
-    num_fronts = len(front_arrays)
-    all_points = np.vstack(front_arrays)
+    frontier_names = list(frontiers.keys())
+    frontier_arrays = [np.atleast_2d(frontiers[name])[:, :2] for name in frontier_names]
+    num_frontiers = len(frontier_arrays)
+    all_points = np.vstack(frontier_arrays)
     num_objectives = all_points.shape[1]
 
     global_min = np.min(all_points, axis=0)
@@ -39,28 +39,28 @@ def compare_fronts(
     range_diff = global_max - global_min
     range_diff[range_diff == 0] = 1.0
     all_points_normalized = (all_points - global_min) / range_diff
-    split_indices = np.cumsum([f.shape[0] for f in front_arrays])[:-1]
-    normalized_fronts = np.split(all_points_normalized, split_indices, axis=0)
+    split_indices = np.cumsum([f.shape[0] for f in frontier_arrays])[:-1]
+    normalized_frontiers = np.split(all_points_normalized, split_indices, axis=0)
 
     logger.info(
-        f"Comparing fronts using Hypervolume [{global_min=}, {global_max=}, {pad=}]"
+        f"Comparing frontiers using Hypervolume [{global_min=}, {global_max=}, {pad=}]"
     )
     norm_ref_point = np.full(num_objectives, 1.0 + pad)
     hv_indicator = Hypervolume(ref_point=norm_ref_point)
     max_possible_volume = np.prod(norm_ref_point)
     normalized_hvs = [
         float(hv_indicator(norm_arr) / max_possible_volume)
-        for norm_arr in normalized_fronts
+        for norm_arr in normalized_frontiers
     ]
 
-    coverage_matrix = np.zeros((num_fronts, num_fronts))
-    for i in range(num_fronts):
-        for j in range(num_fronts):
+    coverage_matrix = np.zeros((num_frontiers, num_frontiers))
+    for i in range(num_frontiers):
+        for j in range(num_frontiers):
             if i == j:
                 coverage_matrix[i, j] = 1.0
                 continue
 
-            combined_norm = np.vstack((normalized_fronts[i], normalized_fronts[j]))
+            combined_norm = np.vstack((normalized_frontiers[i], normalized_frontiers[j]))
             hv_union = hv_indicator(combined_norm)
             hv_i_raw = normalized_hvs[i] * max_possible_volume
             hv_j_raw = normalized_hvs[j] * max_possible_volume
@@ -76,18 +76,18 @@ def compare_fronts(
             name: {
                 "normalized_hypervolume": normalized_hvs[i],
                 "coverage_over_others": {
-                    front_names[j]: float(coverage_matrix[i, j])
-                    for j in range(num_fronts)
+                    frontier_names[j]: float(coverage_matrix[i, j])
+                    for j in range(num_frontiers)
                 },
             }
-            for i, name in enumerate(front_names)
+            for i, name in enumerate(frontier_names)
         },
     }
 
     with output_file.open("w") as f:
         json.dump(output_data, f, indent=4)
 
-    return {name: normalized_hvs[i] for i, name in enumerate(front_names)}
+    return {name: normalized_hvs[i] for i, name in enumerate(frontier_names)}
 
 
 def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, Any]]:
@@ -131,7 +131,7 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
         seen_fsms.add(fsm_id)
         exporter.render_target_sequence(max_positional_cost, positional_binding_range)
 
-    fronts: dict[str, np.ndarray] = {}
+    frontiers: dict[str, np.ndarray] = {}
     for variant, exporter in exporters.items():
         logger.info(f"Rendering variant {variant}...")
         exporter.render(
@@ -142,26 +142,30 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
             hit_thresholds,
         )
         if exporter._results:
-            fronts[variant] = exporter.front
+            frontiers[variant] = exporter.frontier
 
     comparison_dir = Path(
         commonpath([str(e.output_path.resolve()) for e in exporters.values()])
     )
     labels = _display_labels(exporters)
-    labeled_fronts = {labels[name]: front for name, front in fronts.items()}
+    labeled_frontiers = {
+        labels[name]: frontier for name, frontier in frontiers.items()
+    }
 
     hypervolumes: dict[str, float] = {}
-    if fronts:
-        hypervolumes = compare_fronts(fronts, comparison_dir / "pareto_comparison.json")
-        render_pareto_fronts(
-            labeled_fronts,
-            comparison_dir / "pareto_fronts.png",
+    if frontiers:
+        hypervolumes = compare_frontiers(
+            frontiers, comparison_dir / "pareto_comparison.json"
+        )
+        render_pareto_frontiers(
+            labeled_frontiers,
+            comparison_dir / "pareto_frontiers.png",
             max_cost,
             binding_range,
             hit_thresholds,
         )
         render_motif_cost_dist(
-            labeled_fronts,
+            labeled_frontiers,
             comparison_dir / "motif_cost_dists.png",
         )
 

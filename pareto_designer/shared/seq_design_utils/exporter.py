@@ -18,13 +18,13 @@ from pareto_designer.models.context import (
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.binding_utils import get_binding, get_total_binding
 from pareto_designer.shared.parsing import write_sequence
-from pareto_designer.views.pareto_front.html_exporter import (
+from pareto_designer.views.pareto_frontier.html_exporter import (
     render_solution_html,
-    render_pareto_front_html,
+    render_pareto_frontier_html,
 )
-from pareto_designer.views.pareto_front.png_exporter import (
+from pareto_designer.views.pareto_frontier.png_exporter import (
     render_heatmap_png,
-    render_pareto_front_png,
+    render_pareto_frontier_png,
     render_heatmap_legend,
     render_scatter_binding_scores,
 )
@@ -34,7 +34,7 @@ class ParetoExporter:
     def __init__(self, ctx: DesignContext):
         self.ctx = ctx
         self._results: list[ParetoResult] = []
-        self._front: np.ndarray = None
+        self._frontier: np.ndarray = None
         self.__motif_file: Path = None
         self.output_path.mkdir(parents=True, exist_ok=True)
 
@@ -154,19 +154,19 @@ class ParetoExporter:
         self._run_ctx.n_solutions = len(self._results)
 
     @property
-    def front(self) -> np.ndarray:
-        if self._front is None:
-            self._front = np.array(
+    def frontier(self) -> np.ndarray:
+        if self._frontier is None:
+            self._frontier = np.array(
                 [[r.cost, r.binding_score, r.n_motif_hits] for r in self._results],
                 dtype=float,
             )
-        return self._front
+        return self._frontier
 
     @property
     def max_cost(self) -> float:
         if not self._results:
             return 0.0
-        return np.max(self.front[:, 0])
+        return np.max(self.frontier[:, 0])
 
     @property
     def max_positional_cost(self) -> float:
@@ -178,13 +178,13 @@ class ParetoExporter:
     def min_binding(self) -> float:
         if not self._results:
             return 0.0
-        return np.min(self.front[:, 1])
+        return np.min(self.frontier[:, 1])
 
     @property
     def max_binding(self) -> float:
         if not self._results:
             return 0.0
-        return np.max(self.front[:, 1])
+        return np.max(self.frontier[:, 1])
 
     @property
     def min_positional_binding(self) -> float:
@@ -224,14 +224,16 @@ class ParetoExporter:
         with ThreadPoolExecutor(max_workers=4) as executor:
             tasks = [
                 executor.submit(
-                    render_pareto_front_png,
+                    render_pareto_frontier_png,
                     self._run_ctx,
                     self._results,
                     max_cost,
                     binding_range,
                     hit_thresholds,
                 ),
-                executor.submit(render_pareto_front_html, self._run_ctx, self._results),
+                executor.submit(
+                    render_pareto_frontier_html, self._run_ctx, self._results
+                ),
                 executor.submit(
                     render_scatter_binding_scores, self._run_ctx, self._results
                 ),
