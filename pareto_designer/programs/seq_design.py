@@ -9,10 +9,8 @@ from pareto_designer.shared.seq_design_utils.score_function_builder import (
 )
 from pareto_designer.algorithms.spaces import ScoreSpaceOption
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
-from pareto_designer.shared.seq_design_utils.seq_designer import SequenceDesigner
-from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
-from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
 from pareto_designer.shared.seq_design_utils.pareto_utils import render_and_compare
+from pareto_designer.shared.seq_design_utils.run_grid import GridMode, run_design_grid
 from pareto_designer.shared.csv_writer import write_results_stream
 
 
@@ -132,27 +130,21 @@ def main() -> None:
             reduction_ratio_threshold=args.reduce_fsm_by,
         )
     )
-    seq_designer = SequenceDesigner().with_score_function_builder(
-        score_function_builder
+
+    batches = run_design_grid(
+        seq_files,
+        score_function_builder,
+        fsm_builder,
+        k_values=args.budgets,
+        sampler_alpha=args.sampler_alpha,
+        reduce_fsm_by=args.reduce_fsm_by,
+        mode=GridMode.DRY_RUN if args.dry_run else GridMode.RUN,
     )
-    fsm_contexts = list(fsm_builder.iter_contexts(dry_run=args.dry_run))
+
     all_rows: list[dict[str, Any]] = []
-
-    for seq_file in seq_files:
-        exporters: dict[str, ParetoExporter] = dict()
-        for fsm_ctx in fsm_contexts:
-            seq_designer.with_target_sequence(seq_file).with_fsm_context(fsm_ctx)
-            for k in args.budgets:
-                for exp_str in args.sampler_alpha:
-                    alpha = float(exp_str.split("_")[0])
-                    use_dynamic_log_position_exponent = "_log_pos" in exp_str
-                    sampler = PowerLawSUS(k, alpha, use_dynamic_log_position_exponent)
-                    exporter = seq_designer.with_sampler(sampler).run(
-                        dry_run=args.dry_run
-                    )
-                    exporters[f"{fsm_ctx.fsm_id}__{sampler.params}"] = exporter
-
-        all_rows.extend(render_and_compare(exporters))
+    for exporters in batches.values():
+        if exporters:
+            all_rows.extend(render_and_compare(exporters))
 
     if all_rows:
         write_results_stream(

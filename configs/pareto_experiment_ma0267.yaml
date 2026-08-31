@@ -1,0 +1,24 @@
+name: pareto_parameter_sweep_ma0267
+
+fixed:
+  target_sequences: bio_data/zea_mays_genes/
+  matrix_id: MA0267.1
+  codon_usage: bio_data/codon_usage/saccharomyces_cerevisiae.txt
+  binding_score_space: logexp
+  hit_pval: 0.002
+  cost_params: { alpha: 0.5, beta: 1.0, w: 500.0 }
+  results_root: designer_results
+
+sweeps:
+  alpha:
+    fixed: { k: 100, reduce_fsm_by: 0.875 }
+    vary:
+      sampler_alpha: [0.0, 0.5, 1.0, 0.5_log_pos, 1.0_log_pos, 2.0_log_pos]
+  k:
+    fixed: { reduce_fsm_by: 0.875, sampler_alpha: 1.0_log_pos }
+    vary:
+      k: [50, 100, 150]
+  fsm_size:
+    fixed: { k: 100, sampler_alpha: 1.0_log_pos }
+    vary:
+      reduce_fsm_by: [0, 0.75, 0.875, 0.9375]

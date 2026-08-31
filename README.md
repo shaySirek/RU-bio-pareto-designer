@@ -21,6 +21,50 @@ The examples below use maize gene `Zm00001eb052570_-1_265197378_265198704` and J
 
 ## Experiments
 
+Structured parameter sweeps use a YAML config and dedicated CLI commands. Ad-hoc runs still use `design-seq`.
+
+### Parameter sweep workflow
+
+```bash
+# Run all sweeps (skips existing results_metadata.json)
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml
+
+# Single sweep, force re-run, export report after
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --sweep alpha --force --export
+
+poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
+```
+
+### When to use which command
+
+| Command | Use for |
+|---------|---------|
+| `run-experiment-sweeps` | Structured alpha / K / FSM sweeps from YAML |
+| `export-designer-results` | Build Excel report from completed JSON results |
+| `design-seq` | Ad-hoc single invocation (custom CLI flags) |
+
+### YAML config
+
+See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml) for the reference experiment:
+
+- `fixed` — shared inputs: target sequences, motif, codon usage, cost params, results root
+- `sweeps.alpha` / `sweeps.k` / `sweeps.fsm_size` — each sweep fixes all but one dimension (`k`, `sampler_alpha`, or `reduce_fsm_by`)
+- Unknown keys are rejected (strict validation)
+
+### Excel report (`pareto_experiment_report.xlsx`)
+
+Six sheets: **Overview**, **Summary**, three sweep sheets (**Sweep alpha**, **Sweep K**, **Sweep FSM size**), and **Solutions**.
+
+**Summary** lists all design runs (sorted by `seq_id`, `fsm_size` descending, `k` descending) with no correlations or charts.
+
+Each sweep sheet lists that sweep's design runs (sorted by `seq_id`, `fsm_size` descending, `k` descending), CORREL formulas on the right, and bar charts in one row below.
+
+Column **binding_score_mse** is the mean squared proxy binding error per Pareto solution; **binding_score_rmse** is its square root. Bar charts cluster one bar per sequence at each swept value. On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against Hypervolume, binding_sse, and binding_mse.
+
+Report default path: `{results_root}/pareto_experiment_report.xlsx`.
+
+### Ad-hoc runs (`design-seq`)
+
 `--reduce-fsm-by 0` keeps the full DB FSM. `0.75`, `0.875`, and `0.9375` are 4-fold, 8-fold, and 16-fold reduction.
 
 ### Alpha sweep (K=100, 8-fold FSM)

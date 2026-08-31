@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import numpy as np
@@ -18,6 +18,7 @@ from pareto_designer.models.context import (
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.binding_utils import get_binding, get_total_binding
 from pareto_designer.shared.parsing import write_sequence
+from pareto_designer.shared.seq_design_utils.binding_metrics import binding_score_sse
 from pareto_designer.views.pareto_frontier.html_exporter import (
     render_solution_html,
     render_pareto_frontier_html,
@@ -130,6 +131,7 @@ class ParetoExporter:
         data = {
             "metadata": {
                 "runtime": self._run_ctx.runtime,
+                "runtime_seconds": self._run_ctx.runtime_seconds,
                 "n_solutions": len(self._results),
                 "target_id": self._run_ctx.target_sequence_id,
                 "fsm_binding_score_err": self._fsm_ctx.fsm_binding_score_err,
@@ -147,6 +149,7 @@ class ParetoExporter:
 
         meta = data.get("metadata", {})
         self._run_ctx.runtime = meta.get("runtime", "-")
+        self._run_ctx.runtime_seconds = float(meta.get("runtime_seconds", 0.0))
         if "fsm_binding_score_err" in meta:
             self._fsm_ctx.fsm_binding_score_err = meta["fsm_binding_score_err"]
         self._results = [ParetoResult(**d) for d in data.get("results", [])]
@@ -200,11 +203,7 @@ class ParetoExporter:
 
     @property
     def binding_score_sse(self) -> float:
-        if not self._results:
-            return float("nan")
-        origin = np.array([r.origin_binding_score for r in self._results], dtype=float)
-        approx = np.array([r.binding_score for r in self._results], dtype=float)
-        return float(np.sum(np.square(approx - origin)))
+        return binding_score_sse(self._results)
 
     @property
     def fsm_binding_score_err(self) -> float:
@@ -319,7 +318,7 @@ class ParetoExporter:
             positional_binding_range,
         )
 
-    def _get_codon_context(self, pos: int) -> Optional[dict]:
+    def _get_codon_context(self, pos: int) -> dict | None:
         for start, end in self._run_ctx.orfs:
             if start <= pos <= end:
                 rel_pos = pos - start

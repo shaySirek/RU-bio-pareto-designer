@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 FIXED_AVG = "fixed-avg"
 FIXED_TOTAL = "fixed-total"
 

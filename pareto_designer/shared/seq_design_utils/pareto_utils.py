@@ -20,7 +20,7 @@ from pareto_designer.views.pareto_frontier.png_exporter import (
 
 def compare_frontiers(
     frontiers: dict[str, np.ndarray],
-    output_file: Path,
+    output_file: Path | None = None,
     pad: float = 0.1,
 ) -> dict[str, float]:
     if not frontiers:
@@ -42,7 +42,7 @@ def compare_frontiers(
     split_indices = np.cumsum([f.shape[0] for f in frontier_arrays])[:-1]
     normalized_frontiers = np.split(all_points_normalized, split_indices, axis=0)
 
-    logger.info(
+    logger.debug(
         f"Comparing frontiers using Hypervolume [{global_min=}, {global_max=}, {pad=}]"
     )
     norm_ref_point = np.full(num_objectives, 1.0 + pad)
@@ -60,7 +60,9 @@ def compare_frontiers(
                 coverage_matrix[i, j] = 1.0
                 continue
 
-            combined_norm = np.vstack((normalized_frontiers[i], normalized_frontiers[j]))
+            combined_norm = np.vstack(
+                (normalized_frontiers[i], normalized_frontiers[j])
+            )
             hv_union = hv_indicator(combined_norm)
             hv_i_raw = normalized_hvs[i] * max_possible_volume
             hv_j_raw = normalized_hvs[j] * max_possible_volume
@@ -84,10 +86,24 @@ def compare_frontiers(
         },
     }
 
-    with output_file.open("w") as f:
-        json.dump(output_data, f, indent=4)
+    if output_file is not None:
+        with output_file.open("w") as f:
+            json.dump(output_data, f, indent=4)
 
     return {name: normalized_hvs[i] for i, name in enumerate(frontier_names)}
+
+
+def sampler_alpha_label(alpha: float, log_pos: bool) -> str:
+    label = str(alpha)
+    if log_pos:
+        label += "_log_pos"
+    return label
+
+
+def parse_sampler_alpha(exp_str: str) -> tuple[float, bool]:
+    log_pos = "_log_pos" in exp_str
+    alpha = float(exp_str.split("_")[0])
+    return alpha, log_pos
 
 
 def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, Any]]:
@@ -148,9 +164,7 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
         commonpath([str(e.output_path.resolve()) for e in exporters.values()])
     )
     labels = _display_labels(exporters)
-    labeled_frontiers = {
-        labels[name]: frontier for name, frontier in frontiers.items()
-    }
+    labeled_frontiers = {labels[name]: frontier for name, frontier in frontiers.items()}
 
     hypervolumes: dict[str, float] = {}
     if frontiers:
@@ -178,10 +192,10 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
 
 
 def _sampler_alpha_label(sampler: SamplingMethod) -> str:
-    label = str(getattr(sampler, "alpha", None))
-    if getattr(sampler, "use_dynamic_log_position_exponent", False):
-        label += "_log_pos"
-    return label
+    return sampler_alpha_label(
+        float(getattr(sampler, "alpha", 0.0)),
+        bool(getattr(sampler, "use_dynamic_log_position_exponent", False)),
+    )
 
 
 def _fsm_fold_label(exporter: ParetoExporter) -> str:

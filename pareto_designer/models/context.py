@@ -1,4 +1,3 @@
-from typing import Type
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,6 +6,10 @@ from pareto_designer.algorithms.fsm import FSM
 from pareto_designer.algorithms.spaces import ScoreSpace
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
+from pareto_designer.shared.seq_design_utils.run_paths import (
+    format_cost_params_str,
+    run_output_path,
+)
 
 
 @dataclass
@@ -14,7 +17,7 @@ class FSMContext:
     motif: BindingMotif
     origin_binding_score_map: dict[str, float]
     binding_score_map: dict[str, float]
-    binding_score_space: Type[ScoreSpace]
+    binding_score_space: type[ScoreSpace]
     fsm_binding_score_err: float
     fsm: FSM
     fsm_id: str
@@ -54,27 +57,22 @@ class RunContext:
     sampler: SamplingMethod
     n_solutions: int = 0
     runtime: str = ""
+    runtime_seconds: float = 0.0
+    results_root: Path = Path("designer_results")
 
     @property
     def cost_params_str(self) -> str:
-        return "__".join(
-            [
-                f"{_norm_key(k)}_{p:.2f}"
-                for k, p in self.cost_params.items()
-                if isinstance(p, float)
-            ]
-        )
+        return format_cost_params_str(self.cost_params)
 
     @property
     def output_path(self) -> Path:
-        return (
-            Path("designer_results")
-            / self.target_sequence_id
-            / self.cost_params_str
-            / self.motif_id
-            / self.fsm_id
-            / type(self.sampler).__name__
-            / self.sampler.params
+        return run_output_path(
+            self.results_root,
+            self.target_sequence_id,
+            self.cost_params_str,
+            self.motif_id,
+            self.fsm_id,
+            self.sampler,
         )
 
 
@@ -113,7 +111,3 @@ class DesignContext:
     @property
     def sequence_length(self) -> int:
         return len(self.target_sequence)
-
-
-def _norm_key(k: str) -> str:
-    return k.split(" ")[0].lower().replace("-", "_")

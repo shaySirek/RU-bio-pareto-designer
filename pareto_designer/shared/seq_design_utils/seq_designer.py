@@ -21,6 +21,11 @@ class SequenceDesigner:
         self._fsm_builder: FSMBuilder = None
         self._fsm_ctx: FSMContext = None
         self._sampler: SamplingMethod = None
+        self._results_root: Path | None = None
+
+    def with_results_root(self, results_root: Path) -> "SequenceDesigner":
+        self._results_root = results_root
+        return self
 
     def with_score_function_builder(
         self, score_function_builder: ScoreFunctionBuilder
@@ -63,6 +68,7 @@ class SequenceDesigner:
             fsm_id=self._fsm_ctx.fsm_id,
             sampler=self._sampler,
             fsm_size=self._fsm_ctx.size,
+            results_root=self._results_root or Path("designer_results"),
         )
         return DesignContext(self._score_function, self._fsm_ctx, run_ctx)
 
@@ -86,6 +92,7 @@ class SequenceDesigner:
             n_solutions = len(solutions)
             logger.info(f"Found {n_solutions} Pareto-optimal sequences in {runtime}")
             ctx.run_ctx.runtime = runtime
+            ctx.run_ctx.runtime_seconds = duration
             ctx.run_ctx.n_solutions = n_solutions
             exporter.save(solutions)
 

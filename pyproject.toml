@@ -23,10 +23,13 @@ mpld3 = "^0.5.12"
 pathlib = "^1.0.1"
 seaborn = "^0.13.2"
 pymoo = "^0.6.1.6"
+openpyxl = "^3.1.5"
 
 [tool.poetry.scripts]
 # Main Programs
 design-seq = "pareto_designer.programs.seq_design:main"
+run-experiment-sweeps = "pareto_designer.programs.experiment_sweeps:main"
+export-designer-results = "pareto_designer.programs.export_designer_results:main"
 score-binding = "pareto_designer.programs.binding_scorer:main"
 reduce-fsm = "pareto_designer.programs.fsm_reduction:main"
 
