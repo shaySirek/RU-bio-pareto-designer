@@ -12,12 +12,16 @@ FIMO is required to annotate motif hits on designed sequences.
 
 ## Data
 
-Place local inputs under `bio_data/`:
+Reference inputs are tracked under `bio_data/`. Run outputs go to `designer_results/` (gitignored).
 
-- `bio_data/zea_mays_genes/` — target sequences (`*.txt`)
-- `bio_data/codon_usage/saccharomyces_cerevisiae.txt` — codon frequencies (`CODON FREQUENCY` per line)
+- `bio_data/zea_mays_genes/` — maize target sequences (`*.txt`). Each file is raw DNA with `*` marking the CDS start. Included genes:
+  - `Zm00001eb052570_-1_265197378_265198704`
+  - `Zm00001eb186060_1_154283147_154284746`
+  - `Zm00001eb319980_-1_150436154_150437498`
+- `bio_data/codon_usage/saccharomyces_cerevisiae.txt` — yeast codon frequencies (`CODON FREQUENCY` per line; U or T)
+- `bio_data/codon_usage/saccharomyces_cerevisiae.costs.csv` — derived codon costs (`Codon,Cost`), written when a design run builds the cost function
 
-The examples below use maize gene `Zm00001eb052570_-1_265197378_265198704` and JASPAR motif `MA0267.1`. Other genes can go in the same folder; pass a directory of `*.txt` files to `-s` to run a batch.
+The examples below use maize gene `Zm00001eb052570_-1_265197378_265198704` and JASPAR motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/). The YAML experiment uses the whole `zea_mays_genes/` directory. Additional `*.txt` files can go in the same folder; pass a directory to `-s` to run a batch.
 
 ## Experiments
 

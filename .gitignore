@@ -203,8 +203,7 @@ _*.py
 !__init__.py
 
 # Project related
-bio_data/
-*results*/
+designer_results/
 experiments/
 plots/
 FSMs/
