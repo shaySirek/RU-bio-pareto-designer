@@ -20,7 +20,6 @@ from pareto_designer.views.experiment_report.excel_tables import (
 from pareto_designer.views.experiment_report.metrics import (
     aggregate_cross_sequence,
     build_design_run_summaries,
-    SWEEP_CORREL_METRICS,
 )
 from pareto_designer.models.context import ParetoResult
 from pareto_designer.views.experiment_report.models import (
@@ -218,7 +217,6 @@ def test_correl_formula_in_sweep_sheet(tmp_path: Path):
     from openpyxl.worksheet.formula import ArrayFormula
 
     from pareto_designer.views.experiment_report.excel_tables import (
-        ALPHA_CORREL_SECTIONS,
         write_correlations_block,
         write_data_block,
         design_run_row,
@@ -295,7 +293,9 @@ def test_grouped_bar_chart(tmp_path: Path):
 
     from openpyxl import Workbook
 
-    from pareto_designer.views.experiment_report.excel_charts import add_grouped_bar_chart
+    from pareto_designer.views.experiment_report.excel_charts import (
+        add_grouped_bar_chart,
+    )
 
     wb = Workbook()
     ws = wb.active

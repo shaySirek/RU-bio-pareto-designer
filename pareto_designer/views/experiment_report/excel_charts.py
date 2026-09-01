@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from openpyxl.chart import BarChart
 from openpyxl.chart.axis import ChartLines
-from openpyxl.chart.data_source import AxDataSource, NumData, NumDataSource, NumVal, StrData, StrVal
+from openpyxl.chart.data_source import (
+    AxDataSource,
+    NumData,
+    NumDataSource,
+    NumVal,
+    StrData,
+    StrVal,
+)
 from openpyxl.chart.legend import Legend
 from openpyxl.chart.series import Series, SeriesLabel
 from openpyxl.utils import get_column_letter

@@ -6,7 +6,10 @@ from openpyxl.styles import Border, Font, Side
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
-from pareto_designer.views.experiment_report.excel_charts import GroupedSeries, write_chart_row
+from pareto_designer.views.experiment_report.excel_charts import (
+    GroupedSeries,
+    write_chart_row,
+)
 from pareto_designer.views.experiment_report.metrics import (
     CORREL_METRIC_LABELS,
     CORREL_ROW_LABEL,
@@ -156,7 +159,10 @@ def write_correlations_block(
                 array = True
             _set_correl_cell(ws, row, col + metric_idx, formula, array=array)
 
-    headers = [CORREL_ROW_LABEL, *[CORREL_METRIC_LABELS[m] for m in SWEEP_CORREL_METRICS]]
+    headers = [
+        CORREL_ROW_LABEL,
+        *[CORREL_METRIC_LABELS[m] for m in SWEEP_CORREL_METRICS],
+    ]
     col_map = {h: col + idx for idx, h in enumerate(headers)}
     return RangeRef(
         start_row=data_start,
@@ -201,7 +207,9 @@ def _grouped_bar_chart_spec(
     swept_values = sorted({swept_param_value_from_summary(r, sweep) for r in subset})
     categories = []
     for v in swept_values:
-        sample = next(r for r in subset if swept_param_value_from_summary(r, sweep) == v)
+        sample = next(
+            r for r in subset if swept_param_value_from_summary(r, sweep) == v
+        )
         categories.append(_sweep_category_label(sample, sweep))
 
     seq_ids = sorted({r.seq_id for r in subset})
