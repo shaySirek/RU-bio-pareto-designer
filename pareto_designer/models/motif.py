@@ -64,8 +64,13 @@ class BindingMotif:
         fmt = fmt.lower()
         if fmt == "meme":
             alphabet = self.motif.alphabet
+            background = dict(self.motif.background)
             f.write("MEME version 5.0.0\n\n")
             f.write(f"ALPHABET= {alphabet}\n\n")
+            f.write("Background letter frequencies\n")
+            f.write(
+                " ".join(f"{base} {background[base]:.6f}" for base in alphabet) + "\n\n"
+            )
             f.write("strands: + -\n\n")
             f.write(f"MOTIF {self.matrix_id}\n\n")
             f.write(

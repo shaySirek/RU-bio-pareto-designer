@@ -18,7 +18,7 @@ def find_hits_in_region(
     pval: float,
 ) -> tuple[Path, pd.DataFrame]:
     outdir = FIMO_DIR / motif.matrix_id / region.species / region._id
-    hits = _run_fimo(
+    hits = run_fimo(
         motif_file,
         seq_fasta_file,
         pval,
@@ -44,7 +44,7 @@ def get_motif_hits(
     pval: float = 2e-3,
 ) -> list[tuple[int, int]]:
     outdir = FIMO_DIR / motif.matrix_id / seq_id
-    hits = _run_fimo(
+    hits = run_fimo(
         motif_file,
         seq_fasta_file,
         pval,
@@ -56,7 +56,13 @@ def get_motif_hits(
     return motif_hits
 
 
-def _run_fimo(
+def fimo_window_starts(hits: pd.DataFrame) -> set[int]:
+    if hits.empty:
+        return set()
+    return {int(row["start"]) - 1 for _, row in hits.iterrows()}
+
+
+def run_fimo(
     motif_file: Path,
     fasta_file: Path,
     pval: float,
@@ -69,6 +75,8 @@ def _run_fimo(
         "fimo",
         "--thresh",
         str(pval),
+        "--bgfile",
+        "--motif--",
         "--o",
         str(outdir),
         str(motif_file),

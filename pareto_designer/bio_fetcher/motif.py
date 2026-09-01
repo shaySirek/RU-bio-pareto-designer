@@ -13,6 +13,8 @@ from pareto_designer.models.motif import (
     StrandForBindingScore,
 )
 
+PSSM_DISTRIBUTION_PRECISION = 3_000
+
 
 class JASPAR_DB:
     _instance = None
@@ -57,6 +59,15 @@ class BindingMotif(MotifBase):
         self._init_vectors()
         self.mean = self.pssm.mean(self.motif.background)
         self.std = self.pssm.std(self.motif.background)
+        self._score_distribution = None
+
+    def _get_score_distribution(self):
+        if self._score_distribution is None:
+            self._score_distribution = self.pssm.distribution(
+                precision=PSSM_DISTRIBUTION_PRECISION,
+                background=dict(self.motif.background),
+            )
+        return self._score_distribution
 
     def _opt_modify_motif(self):
         if self.consensus_override is not None:
@@ -146,6 +157,26 @@ class BindingMotif(MotifBase):
             pattern_score[pattern] = score
         return pattern_score
 
+    def score_fpr(self, score: float) -> float:
+        dist = self._get_score_distribution()
+        idx = dist._index_diff(score, dist.min_score)
+        idx = max(0, min(dist.n_points - 1, idx))
+        return float(sum(dist.bg_density[idx:]))
+
+    def is_significant_window(self, pattern: str, pvalue: float) -> bool:
+        return (
+            self.score_fpr(self.forward_score(pattern)) <= pvalue
+            or self.score_fpr(self.backward_score(pattern)) <= pvalue
+        )
+
+    def hit_score_threshold(self, pvalue: float) -> float:
+        """FIMO-aligned score cutoff: single-strand p-value threshold.
+
+        Uses the same background as the MEME export and FIMO (--bgfile --motif--).
+        A window is a hit when max(forward, backward) >= this value.
+        """
+        return float(self._get_score_distribution().threshold_fpr(pvalue))
+
     def get_binding_score_maps(self) -> dict[StrandForBindingScore, dict[str, float]]:
         forward_pattern_score: dict[str, float] = {}
         backward_pattern_score: dict[str, float] = {}
@@ -167,39 +198,25 @@ class BindingMotif(MotifBase):
         }
 
     def find_significant_patterns(self, pvalue: float) -> list[str]:
-        distribution = self.pssm.distribution()
-        threshold = distribution.threshold_fpr(pvalue)
+        threshold = self.hit_score_threshold(pvalue)
 
         significant_patterns: list[tuple[str, float]] = []
-
-        max_suffix_scores = [0.0] * (self.length + 1)
-        for i in range(self.length - 1, -1, -1):
-            max_at_i = max(self.pssm[base][i] for base in self.alphabet)
-            max_suffix_scores[i] = max_suffix_scores[i + 1] + max_at_i
-
-        stack = [("", 0.0, 0)]
-        while stack:
-            current_kmer, current_score, pos = stack.pop()
-
-            if pos == self.length:
-                if current_score >= threshold:
-                    significant_patterns.append((current_kmer, current_score))
+        for kmer in product(self.alphabet, repeat=self.length):
+            pattern = "".join(kmer)
+            if not self.is_significant_window(pattern, pvalue):
                 continue
+            score = self.score(pattern, StrandForBindingScore.Double)
+            significant_patterns.append((pattern, score))
 
-            if current_score + max_suffix_scores[pos] < threshold:
-                continue
-
-            for base in self.alphabet:
-                stack.append(
-                    (current_kmer + base, current_score + self.pssm[base][pos], pos + 1)
-                )
-
-        significant_patterns = sorted(
-            significant_patterns, key=itemgetter(1), reverse=True
-        )
-        logger.info(
-            f"Found {len(significant_patterns)} unwanted patterns (p-value={pvalue})"
-            f"\n\tHighest score:  {significant_patterns[0]}"
-            f"\n\tLowest score:   {significant_patterns[-1]}"
-        )
+        significant_patterns.sort(key=itemgetter(1), reverse=True)
+        if significant_patterns:
+            logger.info(
+                f"Found {len(significant_patterns)} unwanted patterns (p-value={pvalue})"
+                f"\n\tHighest score:  {significant_patterns[0]}"
+                f"\n\tLowest score:   {significant_patterns[-1]}"
+            )
+        else:
+            logger.info(
+                f"Found 0 unwanted patterns (p-value={pvalue}, threshold={threshold:.3f})"
+            )
         return [p[0] for p in significant_patterns]

@@ -3,6 +3,7 @@ from typing import Type
 import numpy as np
 
 from pareto_designer.algorithms.spaces import ScoreSpace
+from pareto_designer.bio_fetcher.motif import BindingMotif
 from pareto_designer.models.context import FSMContext
 
 
@@ -35,8 +36,19 @@ def get_total_binding(seq: str, ctx: FSMContext, use_origin: bool = False) -> fl
     return float(total)
 
 
+def motif_hit_window_starts(seq: str, motif: BindingMotif, pvalue: float) -> set[int]:
+    m_len = motif.length
+    if len(seq) < m_len:
+        return set()
+    return {
+        i
+        for i in range(len(seq) - m_len + 1)
+        if motif.is_significant_window(seq[i : i + m_len], pvalue)
+    }
+
+
 def motif_hit_binding_thresholds(ctx: FSMContext, n_hits: int = 3) -> list[float]:
-    threshold = float(ctx.motif.pssm.distribution().threshold_fpr(ctx.hit_pvalue))
+    threshold = ctx.motif.hit_score_threshold(ctx.hit_pvalue)
     space = ctx.binding_score_space
     thresholds = [threshold]
     acc = threshold
