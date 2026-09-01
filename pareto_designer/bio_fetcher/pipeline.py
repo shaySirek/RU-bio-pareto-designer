@@ -61,7 +61,7 @@ def find_hits_in_genes(
         bases_before=bases_before_cds,
         bases_after=bases_after_cds,
     ):
-        fasta_to_txt_with_marked_cds(fasta_file, bases_before_cds, bases_after_cds)
+        fasta_to_txt_with_marked_cds(fasta_file, bases_before_cds)
         outdir, hits = find_hits_in_region(
             region, fasta_file, motif, motif_file, fimo_pval
         )

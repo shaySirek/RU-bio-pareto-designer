@@ -123,14 +123,12 @@ class CostUtils:
         )
 
 
-def fasta_to_txt_with_marked_cds(
-    fasta_file: Path, bases_before_cds: int, bases_after_cds: int
-):
+def fasta_to_txt_with_marked_cds(fasta_file: Path, bases_before_cds: int):
     sequence = read_sequence(fasta_file)
     sequence = (
         sequence[:bases_before_cds]
         + CostUtils.START_CODON_MARKER
-        + sequence[bases_after_cds:]
+        + sequence[bases_before_cds:]
     )
     with fasta_file.with_suffix(".txt").open("wt") as f:
         f.write(sequence)
