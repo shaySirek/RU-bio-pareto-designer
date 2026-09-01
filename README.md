@@ -1,13 +1,15 @@
-# Multiple Objective DNA Sequence Design
+# Multiple-objective DNA sequence design
 
-This guide documents how to install, run, and reproduce **pareto-designer**: a pipeline for redesigning DNA coding sequences under two competing objectives—minimizing functional cost (synonymous-codon substitutions relative to a target gene) and minimizing binding to an unwanted regulatory motif. Motifs are taken from [JASPAR](https://jaspar.elixir.no/); target genes from [Ensembl](https://www.ensembl.org/); spurious motif hits on designed sequences are annotated with [FIMO](https://meme-suite.org/meme/doc/fimo.html). The bundled reference experiment ([configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml)) sweeps sampler, budget, and FSM-reduction settings on three maize genes against motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/).
+This guide documents how to install, run, and reproduce **pareto-designer**, an implementation of a method for synthetic DNA sequence design that reconciles functional requirements with avoidance of unintended protein DNA binding. Instead of treating motif avoidance as a binary constraint, the method uses position-specific scoring matrices (PSSMs) to quantify binding affinity and formalizes sequence redesign as a multi-objective optimization task. A dynamic programming algorithm jointly minimizes unintended binding and functional interference, tracking continuous PSSM scores across overlapping windows with a de Bruijn graph-based finite state machine (FSM). To maintain efficiency, we utilize a state reduction algorithm that merges FSM states with minimal impact on accuracy, and a pruning strategy to manage the growth of the Pareto-optimal set in long sequences.
+
+The reference case study targets expression of maize genes in yeast. Motifs come from [JASPAR](https://jaspar.elixir.no/); target genes from [Ensembl](https://www.ensembl.org/); designed sequences are checked for spurious motif hits with [FIMO](https://meme-suite.org/meme/doc/fimo.html). The bundled experiment ([configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml)) sweeps sampler settings (α and K, as separate sweeps) and FSM reduction on three maize genes against motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/).
 
 ## Prerequisites
 
 - **Python 3.11+** (tested on 3.12)
-- **[Poetry](https://python-poetry.org/docs/#installation)** — dependency and CLI management
-- **[FIMO](https://meme-suite.org/meme/doc/fimo.html)** (MEME Suite) — must be on `PATH`; used when exporting solutions to annotate motif hits (tested with 5.5.8)
-- **Network** — first run for a new JASPAR motif ID fetches the matrix via `pyjaspar` (cached under `bio_data/motifs/` afterward)
+- **[Poetry](https://python-poetry.org/docs/#installation)**: dependency and CLI management
+- **[FIMO](https://meme-suite.org/meme/doc/fimo.html)** (MEME Suite): must be on `PATH`; used when exporting solutions to annotate motif hits (tested with 5.5.8)
+- **Network**: first run for a new JASPAR motif ID fetches the matrix via `pyjaspar` (cached under `bio_data/motifs/` afterward)
 
 Run all commands from the repository root.
 
@@ -20,7 +22,7 @@ fimo --version   # verify FIMO is on PATH
 
 ## Quick start
 
-Smoke-test one grid point (single gene, budget K, sampler α, and FSM reduction):
+Smoke-test on a single gene:
 
 ```bash
 poetry run design-seq -s bio_data/zea_mays_genes/Zm00001eb052570_-1_265197378_265198704.txt -m MA0267.1 --codon-usage bio_data/codon_usage/saccharomyces_cerevisiae.txt -k 50 --sampler-alpha 1.0 --reduce-fsm-by 0.875
@@ -38,10 +40,10 @@ Tests that require FIMO are skipped automatically when the binary is missing.
 
 ## Reproduce reference experiment
 
-The canonical experiment is [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml): three maize genes, motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/), and three parameter sweeps (alpha, K, FSM size). Bundled inputs are already in `bio_data/`.
+The canonical experiment is [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml): three maize genes, motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/), and three parameter sweeps over sampler α, sampler K, and FSM size. Bundled inputs are already in `bio_data/`.
 
 1. Install dependencies (see above).
-2. Run sweeps — existing runs are skipped when `results_metadata.json` is present; use `--force` to re-run:
+2. Run sweeps. Existing runs are skipped when `results_metadata.json` is present; use `--force` to re-run:
 
 ```bash
 poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml
@@ -67,7 +69,7 @@ Re-render plots or the report from existing results without re-running the optim
 poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --dry-run --export
 ```
 
-The full sweep runs all combinations in the YAML (3 genes × 3 sweeps). Expect long runtimes for the complete grid.
+The full sweep runs all combinations in the YAML (39 design runs across 3 genes: 6 α × 3 genes, 3 K × 3 genes, 4 FSM sizes × 3 genes). Expect long runtimes for the complete grid.
 
 ## Data
 
@@ -89,12 +91,14 @@ Additional `*.txt` files can go in the same folder; pass a directory to `-s` to 
 
 ### Motifs
 
-`bio_data/motifs/<matrix_id>/` caches MEME-format motif files (e.g. `motif.meme`) and, after `gene-fetch`, `significant_patterns.txt` for hit filtering.
+`bio_data/motifs/<matrix_id>/` caches MEME format motif files (e.g. `motif.meme`). Running `gene-fetch` also writes `significant_patterns.txt` there; the bundled design runs only require `motif.meme`.
 
 ### Codon usage
 
-- `bio_data/codon_usage/saccharomyces_cerevisiae.txt` — yeast codon frequencies (`CODON FREQUENCY` per line; U or T)
-- `bio_data/codon_usage/saccharomyces_cerevisiae.costs.csv` — derived codon costs (`Codon,Cost`), written when a design run builds the cost function
+Yeast codon frequencies for the maize-in-yeast case study:
+
+- `bio_data/codon_usage/saccharomyces_cerevisiae.txt`: codon frequencies (`CODON FREQUENCY` per line; U or T)
+- `bio_data/codon_usage/saccharomyces_cerevisiae.costs.csv`: derived codon costs (`Codon,Cost`), written when a design run builds the cost function
 
 ### Fetch new target sequences
 
@@ -110,7 +114,7 @@ Copy the resulting `.txt` into `bio_data/zea_mays_genes/` (defaults: 500 bp upst
 
 | Command | Use for |
 |---------|---------|
-| `run-experiment-sweeps` | Structured alpha / K / FSM sweeps from YAML |
+| `run-experiment-sweeps` | Structured sampler (α / K) and FSM sweeps from YAML |
 | `export-designer-results` | Build Excel report from completed JSON results |
 | `design-seq` | Ad-hoc single invocation (custom CLI flags) |
 | `gene-fetch` | Fetch a gene region from Ensembl and annotate motif hits |
@@ -133,8 +137,9 @@ poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
 
 See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml) for the reference experiment:
 
-- `fixed` — shared inputs: target sequences, motif, codon usage, cost params, results root
-- `sweeps.alpha` / `sweeps.k` / `sweeps.fsm_size` — each sweep fixes all but one dimension (`k`, `sampler_alpha`, or `reduce_fsm_by`)
+- `fixed`: shared inputs (target sequences, motif, codon usage, `binding_score_space`, `hit_pval`, `cost_params` {α, β, w}, results root)
+- `sweeps.alpha` / `sweeps.k`: sampler settings; each fixes the other sampler dimension and FSM reduction, then varies `sampler_alpha` or `k`
+- `sweeps.fsm_size`: FSM reduction; varies `reduce_fsm_by`
 - Unknown keys are rejected (strict validation)
 
 #### Excel report
@@ -145,8 +150,8 @@ Written to `{results_root}/pareto_experiment_report.xlsx` with six sheets: **Ove
 
 Each sweep sheet lists that sweep's design runs (same sort order), CORREL formulas on the right, and bar charts in one row below. Bar charts cluster one bar per sequence at each swept value.
 
-- **binding_score_mse** — mean squared proxy binding error per Pareto solution
-- **binding_score_rmse** — square root of binding_score_mse
+- **binding_score_mse**: mean squared error between reduced- and origin- FSM binding scores, averaged over Pareto-optimal solutions
+- **binding_score_rmse**: square root of `binding_score_mse`
 
 On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against Hypervolume, binding_sse, and binding_mse.
 
@@ -154,7 +159,7 @@ On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against
 
 Examples below explore one parameter dimension at a time on a single gene. Parameter values differ slightly from the YAML experiment; use `run-experiment-sweeps` to match the reference config exactly.
 
-`--reduce-fsm-by 0` keeps the full DB FSM. `0.75`, `0.875`, and `0.9375` are 4-fold, 8-fold, and 16-fold reduction. Add `--dry-run` to re-render outputs without running the optimizer.
+`--reduce-fsm-by 0` keeps the origin de Bruijn FSM. `0.75`, `0.875`, and `0.9375` are 4-fold, 8-fold, and 16-fold reduction. Add `--dry-run` to re-render outputs without running the optimizer.
 
 **Alpha sweep** (K=100, 8-fold FSM):
 
@@ -203,7 +208,7 @@ designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/PowerLawSUS/<sampler_para
 Comparison files for one CLI invocation are written at the common parent of those run directories:
 
 - `pareto_frontiers.png`, `motif_cost_dists.png`
-- `pareto_comparison.json` — pairwise coverage and normalized hypervolume
-- `pareto_comparison.csv` — per-run `k`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, binding-score SSE, FSM reduction error, and 2-objective hypervolume (cost and binding, both minimized)
+- `pareto_comparison.json`: pairwise coverage and normalized hypervolume
+- `pareto_comparison.csv`: per-run `k`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, binding score SSE, FSM reduction error, and 2-objective hypervolume (cost and binding, both minimized)
 
 All sequences from the same `design-seq` run are also collected in `designer_results/pareto_comparison.csv` (includes a `seq_id` column).
