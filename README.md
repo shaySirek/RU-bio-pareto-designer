@@ -1,33 +1,123 @@
 # Multiple Objective DNA Sequence Design
 
-DNA sequence design using multiple objective optimization to jointly minimize functional interference and unintended binding.
+This guide documents how to install, run, and reproduce **pareto-designer**: a pipeline for redesigning DNA coding sequences under two competing objectives—minimizing functional cost (synonymous-codon substitutions relative to a target gene) and minimizing binding to an unwanted regulatory motif. Motifs are taken from [JASPAR](https://jaspar.elixir.no/); target genes from [Ensembl](https://www.ensembl.org/); spurious motif hits on designed sequences are annotated with [FIMO](https://meme-suite.org/meme/doc/fimo.html). The bundled reference experiment ([configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml)) sweeps sampler, budget, and FSM-reduction settings on three maize genes against motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/).
+
+## Prerequisites
+
+- **Python 3.11+** (tested on 3.12)
+- **[Poetry](https://python-poetry.org/docs/#installation)** — dependency and CLI management
+- **[FIMO](https://meme-suite.org/meme/doc/fimo.html)** (MEME Suite) — must be on `PATH`; used when exporting solutions to annotate motif hits (tested with 5.5.8)
+- **Network** — first run for a new JASPAR motif ID fetches the matrix via `pyjaspar` (cached under `bio_data/motifs/` afterward)
+
+Run all commands from the repository root.
 
 ## Install
 
 ```bash
 poetry install
+fimo --version   # verify FIMO is on PATH
 ```
 
-FIMO is required to annotate motif hits on designed sequences.
+## Quick start
+
+Smoke-test one grid point (single gene, budget K, sampler α, and FSM reduction):
+
+```bash
+poetry run design-seq -s bio_data/zea_mays_genes/Zm00001eb052570_-1_265197378_265198704.txt -m MA0267.1 --codon-usage bio_data/codon_usage/saccharomyces_cerevisiae.txt -k 50 --sampler-alpha 1.0 --reduce-fsm-by 0.875
+```
+
+Outputs appear under `designer_results/` (see [Outputs](#outputs)).
+
+## Verify install
+
+```bash
+poetry run pytest pareto_designer/tests/
+```
+
+Tests that require FIMO are skipped automatically when the binary is missing.
+
+## Reproduce reference experiment
+
+The canonical experiment is [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml): three maize genes, motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/), and three parameter sweeps (alpha, K, FSM size). Bundled inputs are already in `bio_data/`.
+
+1. Install dependencies (see above).
+2. Run sweeps — existing runs are skipped when `results_metadata.json` is present; use `--force` to re-run:
+
+```bash
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml
+```
+
+To try one sweep first (recommended before the full grid):
+
+```bash
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --sweep alpha
+```
+
+3. Export the Excel report:
+
+```bash
+poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
+```
+
+4. Open `designer_results/pareto_experiment_report.xlsx`.
+
+Re-render plots or the report from existing results without re-running the optimizer:
+
+```bash
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --dry-run --export
+```
+
+The full sweep runs all combinations in the YAML (3 genes × 3 sweeps). Expect long runtimes for the complete grid.
 
 ## Data
 
-Reference inputs are tracked under `bio_data/`. Run outputs go to `designer_results/` (gitignored).
+Reference inputs live under `bio_data/`. Run outputs go to `designer_results/` (gitignored).
 
-- `bio_data/zea_mays_genes/` — maize target sequences (`*.txt`). Each file is raw DNA with `*` marking the CDS start. Included genes:
-  - `Zm00001eb052570_-1_265197378_265198704`
-  - `Zm00001eb186060_1_154283147_154284746`
-  - `Zm00001eb319980_-1_150436154_150437498`
+### Target sequences
+
+`bio_data/zea_mays_genes/` holds maize target sequences as `*.txt`. Each file is raw DNA with `*` marking the CDS start.
+
+File names follow `{gene_id}_{strand}_{start}_{end}`: Ensembl gene ID, strand (`1` forward, `-1` reverse), then 1-based start and end coordinates of the fetched genomic window (including any upstream/downstream padding from `gene-fetch`).
+
+Included genes:
+
+- `Zm00001eb052570_-1_265197378_265198704`
+- `Zm00001eb186060_1_154283147_154284746`
+- `Zm00001eb319980_-1_150436154_150437498`
+
+Additional `*.txt` files can go in the same folder; pass a directory to `-s` to run a batch.
+
+### Motifs
+
+`bio_data/motifs/<matrix_id>/` caches MEME-format motif files (e.g. `motif.meme`) and, after `gene-fetch`, `significant_patterns.txt` for hit filtering.
+
+### Codon usage
+
 - `bio_data/codon_usage/saccharomyces_cerevisiae.txt` — yeast codon frequencies (`CODON FREQUENCY` per line; U or T)
 - `bio_data/codon_usage/saccharomyces_cerevisiae.costs.csv` — derived codon costs (`Codon,Cost`), written when a design run builds the cost function
 
-The examples below use maize gene `Zm00001eb052570_-1_265197378_265198704` and JASPAR motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/). The YAML experiment uses the whole `zea_mays_genes/` directory. Additional `*.txt` files can go in the same folder; pass a directory to `-s` to run a batch.
+### Fetch new target sequences
 
-## Experiments
+`gene-fetch` downloads a CDS window from Ensembl, writes `.fa` and `.txt` under `bio_data/sequences/`, and annotates motif hits with FIMO:
 
-Structured parameter sweeps use a YAML config and dedicated CLI commands. Ad-hoc runs still use `design-seq`.
+```bash
+poetry run gene-fetch --species zea_mays --gene-id Zm00001eb052570 --motif-id MA0267.1
+```
 
-### Parameter sweep workflow
+Copy the resulting `.txt` into `bio_data/zea_mays_genes/` (defaults: 500 bp upstream and downstream of the CDS). Requires network access to Ensembl.
+
+## Usage
+
+| Command | Use for |
+|---------|---------|
+| `run-experiment-sweeps` | Structured alpha / K / FSM sweeps from YAML |
+| `export-designer-results` | Build Excel report from completed JSON results |
+| `design-seq` | Ad-hoc single invocation (custom CLI flags) |
+| `gene-fetch` | Fetch a gene region from Ensembl and annotate motif hits |
+
+Multi-line shell examples below use bash line continuations (`\`). On PowerShell, join into one line or use backtick (`` ` ``) instead of `\`.
+
+### Structured sweeps
 
 ```bash
 # Run all sweeps (skips existing results_metadata.json)
@@ -39,15 +129,7 @@ poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --swee
 poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
 ```
 
-### When to use which command
-
-| Command | Use for |
-|---------|---------|
-| `run-experiment-sweeps` | Structured alpha / K / FSM sweeps from YAML |
-| `export-designer-results` | Build Excel report from completed JSON results |
-| `design-seq` | Ad-hoc single invocation (custom CLI flags) |
-
-### YAML config
+#### Config
 
 See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml) for the reference experiment:
 
@@ -55,23 +137,26 @@ See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yam
 - `sweeps.alpha` / `sweeps.k` / `sweeps.fsm_size` — each sweep fixes all but one dimension (`k`, `sampler_alpha`, or `reduce_fsm_by`)
 - Unknown keys are rejected (strict validation)
 
-### Excel report (`pareto_experiment_report.xlsx`)
+#### Excel report
 
-Six sheets: **Overview**, **Summary**, three sweep sheets (**Sweep alpha**, **Sweep K**, **Sweep FSM size**), and **Solutions**.
+Written to `{results_root}/pareto_experiment_report.xlsx` with six sheets: **Overview**, **Summary**, three sweep sheets (**Sweep alpha**, **Sweep K**, **Sweep FSM size**), and **Solutions**.
 
 **Summary** lists all design runs (sorted by `seq_id`, `fsm_size` descending, `k` descending) with no correlations or charts.
 
-Each sweep sheet lists that sweep's design runs (sorted by `seq_id`, `fsm_size` descending, `k` descending), CORREL formulas on the right, and bar charts in one row below.
+Each sweep sheet lists that sweep's design runs (same sort order), CORREL formulas on the right, and bar charts in one row below. Bar charts cluster one bar per sequence at each swept value.
 
-Column **binding_score_mse** is the mean squared proxy binding error per Pareto solution; **binding_score_rmse** is its square root. Bar charts cluster one bar per sequence at each swept value. On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against Hypervolume, binding_sse, and binding_mse.
+- **binding_score_mse** — mean squared proxy binding error per Pareto solution
+- **binding_score_rmse** — square root of binding_score_mse
 
-Report default path: `{results_root}/pareto_experiment_report.xlsx`.
+On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against Hypervolume, binding_sse, and binding_mse.
 
 ### Ad-hoc runs (`design-seq`)
 
-`--reduce-fsm-by 0` keeps the full DB FSM. `0.75`, `0.875`, and `0.9375` are 4-fold, 8-fold, and 16-fold reduction.
+Examples below explore one parameter dimension at a time on a single gene. Parameter values differ slightly from the YAML experiment; use `run-experiment-sweeps` to match the reference config exactly.
 
-### Alpha sweep (K=100, 8-fold FSM)
+`--reduce-fsm-by 0` keeps the full DB FSM. `0.75`, `0.875`, and `0.9375` are 4-fold, 8-fold, and 16-fold reduction. Add `--dry-run` to re-render outputs without running the optimizer.
+
+**Alpha sweep** (K=100, 8-fold FSM):
 
 ```bash
 poetry run design-seq \
@@ -83,7 +168,7 @@ poetry run design-seq \
   --reduce-fsm-by 0.875
 ```
 
-### K sweep (α=1.0 and 1.0_log_pos, 8-fold FSM)
+**K sweep** (α=1.0 and 1.0_log_pos, 8-fold FSM):
 
 ```bash
 poetry run design-seq \
@@ -95,9 +180,7 @@ poetry run design-seq \
   --reduce-fsm-by 0.875
 ```
 
-### FSM reduction sweep
-
-After choosing a sampler from the sweeps above (example: `-k 100 --sampler-alpha 1.0`):
+**FSM reduction sweep** (after choosing a sampler, e.g. `-k 100 --sampler-alpha 1.0`):
 
 ```bash
 poetry run design-seq \
@@ -108,8 +191,6 @@ poetry run design-seq \
   --sampler-alpha 1.0 \
   --reduce-fsm-by 0 0.75 0.875 0.9375
 ```
-
-Add `--dry-run` to re-render outputs without running the optimizer.
 
 ## Outputs
 
