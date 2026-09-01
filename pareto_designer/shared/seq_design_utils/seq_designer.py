@@ -11,6 +11,10 @@ from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.models.context import RunContext, FSMContext, DesignContext
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
+from pareto_designer.shared.seq_design_utils.run_paths import (
+    format_cost_params_str,
+    metadata_path as run_metadata_path,
+)
 
 
 class SequenceDesigner:
@@ -54,23 +58,41 @@ class SequenceDesigner:
         self._sampler = sampler
         return self
 
-    def _build(self, dry_run: bool = False) -> DesignContext:
+    @property
+    def cost_params_str(self) -> str:
+        return format_cost_params_str(self._ensure_score_function().params)
+
+    def metadata_path(self, fsm_ctx: FSMContext, sampler: SamplingMethod) -> Path:
+        return run_metadata_path(
+            self._results_root or Path("designer_results"),
+            self._sequence_id,
+            self.cost_params_str,
+            fsm_ctx.motif_id,
+            fsm_ctx.fsm_id,
+            sampler,
+        )
+
+    def _ensure_score_function(self) -> ScoreFunction:
         if not self._score_function:
             self._score_function = self._score_function_builder.build()
+        return self._score_function
+
+    def _build(self, dry_run: bool = False) -> DesignContext:
+        score_function = self._ensure_score_function()
         if not self._fsm_ctx:
             self._fsm_ctx = self._fsm_builder.build(dry_run)
         run_ctx = RunContext(
             target_sequence_id=self._sequence_id,
-            target_sequence=self._score_function.target_sequence,
-            orfs=self._score_function.orfs,
-            cost_params=self._score_function.params,
+            target_sequence=score_function.target_sequence,
+            orfs=score_function.orfs,
+            cost_params=score_function.params,
             motif_id=self._fsm_ctx.motif_id,
             fsm_id=self._fsm_ctx.fsm_id,
             sampler=self._sampler,
             fsm_size=self._fsm_ctx.size,
             results_root=self._results_root or Path("designer_results"),
         )
-        return DesignContext(self._score_function, self._fsm_ctx, run_ctx)
+        return DesignContext(score_function, self._fsm_ctx, run_ctx)
 
     def run(self, dry_run: bool = False) -> ParetoExporter:
         ctx = self._build(dry_run)

@@ -7,7 +7,6 @@ from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.pareto_utils import parse_sampler_alpha
-from pareto_designer.shared.seq_design_utils.run_paths import metadata_path
 from pareto_designer.shared.seq_design_utils.score_function_builder import (
     ScoreFunctionBuilder,
 )
@@ -47,14 +46,12 @@ def run_design_grid(
         if ctx.reduce_fsm_by in allowed_ratios
     ]
     batches: dict[str, dict[str, ParetoExporter]] = {}
-    root = results_root or Path("designer_results")
 
     for seq_file in seq_files:
         exporters: dict[str, ParetoExporter] = {}
         seq_designer.with_target_sequence(seq_file)
         if results_root is not None:
             seq_designer.with_results_root(results_root)
-        cost_params_str = seq_designer._build(dry_run=True).run_ctx.cost_params_str
         seq_id = seq_file.stem
 
         for fsm_ctx in fsm_contexts:
@@ -63,14 +60,7 @@ def run_design_grid(
                 for exp_str in sampler_alpha:
                     alpha, log_pos = parse_sampler_alpha(exp_str)
                     sampler = PowerLawSUS(k, alpha, log_pos)
-                    meta_path = metadata_path(
-                        root,
-                        seq_id,
-                        cost_params_str,
-                        fsm_ctx.motif_id,
-                        fsm_ctx.fsm_id,
-                        sampler,
-                    )
+                    meta_path = seq_designer.metadata_path(fsm_ctx, sampler)
                     if skip_existing and meta_path.exists():
                         logger.info(f"Skipping existing run: {meta_path.parent}")
                         if dry_run:
