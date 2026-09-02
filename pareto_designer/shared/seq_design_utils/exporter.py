@@ -18,7 +18,11 @@ from pareto_designer.models.context import (
 from pareto_designer.shared.func_cost.base_function import ScoreFunction
 from pareto_designer.shared.binding_utils import get_binding, get_total_binding
 from pareto_designer.shared.parsing import write_sequence
-from pareto_designer.shared.seq_design_utils.binding_metrics import binding_score_sse
+from pareto_designer.shared.seq_design_utils.binding_metrics import (
+    fill_kmer_binding_from_positional,
+    fsm_binding_score_mse,
+    solution_kmer_binding_score_mse,
+)
 from pareto_designer.views.pareto_frontier.html_exporter import (
     render_solution_html,
     render_pareto_frontier_html,
@@ -28,7 +32,17 @@ from pareto_designer.views.pareto_frontier.png_exporter import (
     render_pareto_frontier_png,
     render_heatmap_legend,
     render_scatter_binding_scores,
+    render_kmer_binding_score_mse_histogram,
 )
+
+_KMER_METADATA_KEYS = ("kmer_binding_score_mse", "kmer_binding_score_err_std")
+
+
+def _result_record(res: ParetoResult) -> dict:
+    record = asdict(res)
+    for key in _KMER_METADATA_KEYS:
+        record.pop(key, None)
+    return record
 
 
 class ParetoExporter:
@@ -109,6 +123,7 @@ class ParetoExporter:
             self._motif_file,
             pval=self._fsm_ctx.hit_pvalue,
         )
+        kmer_mse = solution_kmer_binding_score_mse(sequence, self._fsm_ctx)
 
         return ParetoResult(
             cost=float(functional_cost),
@@ -125,6 +140,8 @@ class ParetoExporter:
             sequence=sequence,
             n_cost_items=n_cost_items,
             motif_hits=motif_hits,
+            kmer_binding_score_mse=float(kmer_mse.mse),
+            kmer_binding_score_err_std=float(kmer_mse.err_std),
         )
 
     def _dump(self):
@@ -135,8 +152,9 @@ class ParetoExporter:
                 "n_solutions": len(self._results),
                 "target_id": self._run_ctx.target_sequence_id,
                 "fsm_binding_score_err": self._fsm_ctx.fsm_binding_score_err,
+                "db_fsm_size": self._fsm_ctx.db_fsm_size,
             },
-            "results": [asdict(res) for res in self._results],
+            "results": [_result_record(res) for res in self._results],
         }
         with self._index_file.open("w") as f:
             json.dump(data, f, indent=4)
@@ -152,8 +170,20 @@ class ParetoExporter:
         self._run_ctx.runtime_seconds = float(meta.get("runtime_seconds", 0.0))
         if "fsm_binding_score_err" in meta:
             self._fsm_ctx.fsm_binding_score_err = meta["fsm_binding_score_err"]
-        self._results = [ParetoResult(**d) for d in data.get("results", [])]
-        self._results.sort(key=lambda x: x.id)
+        rows = []
+        for row in data.get("results", []):
+            for key in _KMER_METADATA_KEYS:
+                row.pop(key, None)
+            rows.append(ParetoResult(**row))
+        rows.sort(key=lambda x: x.id)
+        fill_kmer_binding_from_positional(
+            rows,
+            self.output_path,
+            self._fsm_ctx.origin_binding_score_map,
+            self._fsm_ctx.motif_length,
+            self._fsm_ctx.binding_score_space,
+        )
+        self._results = rows
         self._run_ctx.n_solutions = len(self._results)
 
     @property
@@ -164,6 +194,25 @@ class ParetoExporter:
                 dtype=float,
             )
         return self._frontier
+
+    @property
+    def origin_frontier(self) -> np.ndarray:
+        return np.array(
+            [[r.cost, r.origin_binding_score] for r in self._results],
+            dtype=float,
+        )
+
+    @property
+    def min_origin_binding(self) -> float:
+        if not self._results:
+            return 0.0
+        return min(r.origin_binding_score for r in self._results)
+
+    @property
+    def max_origin_binding(self) -> float:
+        if not self._results:
+            return 0.0
+        return max(r.origin_binding_score for r in self._results)
 
     @property
     def max_cost(self) -> float:
@@ -202,12 +251,10 @@ class ParetoExporter:
         return max(r.max_positional_binding for r in self._results)
 
     @property
-    def binding_score_sse(self) -> float:
-        return binding_score_sse(self._results)
-
-    @property
     def fsm_binding_score_err(self) -> float:
-        return self._fsm_ctx.fsm_binding_score_err
+        return fsm_binding_score_mse(
+            self._fsm_ctx.fsm_binding_score_err, self._fsm_ctx.db_fsm_size
+        )
 
     def render(
         self,
@@ -216,6 +263,8 @@ class ParetoExporter:
         max_positional_cost: float,
         positional_binding_range: tuple[float, float],
         hit_thresholds: list[float] | None = None,
+        *,
+        skip_render_per_solution: bool = False,
     ):
         if not self._results:
             return
@@ -229,6 +278,7 @@ class ParetoExporter:
                     max_cost,
                     binding_range,
                     hit_thresholds,
+                    is_db_fsm=self._fsm_ctx.reduce_fsm_by == 0,
                 ),
                 executor.submit(
                     render_pareto_frontier_html, self._run_ctx, self._results
@@ -236,18 +286,25 @@ class ParetoExporter:
                 executor.submit(
                     render_scatter_binding_scores, self._run_ctx, self._results
                 ),
+                executor.submit(
+                    render_kmer_binding_score_mse_histogram,
+                    self._run_ctx,
+                    self._results,
+                    self.fsm_binding_score_err,
+                ),
             ]
-            tasks.extend(
-                [
-                    executor.submit(
-                        self._render_solution,
-                        res,
-                        max_positional_cost,
-                        positional_binding_range,
-                    )
-                    for res in self._results
-                ]
-            )
+            if not skip_render_per_solution:
+                tasks.extend(
+                    [
+                        executor.submit(
+                            self._render_solution,
+                            res,
+                            max_positional_cost,
+                            positional_binding_range,
+                        )
+                        for res in self._results
+                    ]
+                )
 
             wait(tasks)
 

@@ -92,6 +92,8 @@ class ParetoResult:
     sequence: str
     n_cost_items: int
     motif_hits: list[tuple[int, int]]
+    kmer_binding_score_mse: float = float("nan")
+    kmer_binding_score_err_std: float = float("nan")
 
     @property
     def n_motif_hits(self) -> int:

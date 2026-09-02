@@ -43,25 +43,19 @@ Tests that require FIMO are skipped automatically when the binary is missing.
 The canonical experiment is [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml): three maize genes, motif [MA0267.1](https://jaspar.elixir.no/matrix/MA0267.1/), and three parameter sweeps over sampler α, sampler K, and FSM size. Bundled inputs are already in `bio_data/`.
 
 1. Install dependencies (see above).
-2. Run sweeps. Existing runs are skipped when `results_metadata.json` is present; use `--force` to re-run:
+2. Run sweeps. Existing runs are skipped when `results_metadata.json` is present; use `--force` to re-run. Add `--export` to write the Excel report after the sweeps:
 
 ```bash
-poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --export
 ```
 
 To try one sweep first (recommended before the full grid):
 
 ```bash
-poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --sweep alpha
+poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --sweep alpha --export
 ```
 
-3. Export the Excel report:
-
-```bash
-poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
-```
-
-4. Open `designer_results/pareto_experiment_report.xlsx`.
+3. Open `designer_results/pareto_experiment_report.xlsx`.
 
 Re-render plots or the report from existing results without re-running the optimizer:
 
@@ -69,7 +63,9 @@ Re-render plots or the report from existing results without re-running the optim
 poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --dry-run --export
 ```
 
-The full sweep runs all combinations in the YAML (39 design runs across 3 genes: 6 α × 3 genes, 3 K × 3 genes, 4 FSM sizes × 3 genes). Expect long runtimes for the complete grid.
+Add `--skip-render-per-solution` to skip per-solution HTML and heatmaps (and the target-sequence FIMO/heatmap pass) for a faster plot-only re-render of Pareto PNGs and comparison files.
+
+The full sweep runs all combinations in the YAML (42 design runs across 3 genes: 7 α × 3 genes, 3 K × 3 genes, 4 FSM sizes × 3 genes). Expect long runtimes for the complete grid.
 
 ## Data
 
@@ -114,8 +110,7 @@ Copy the resulting `.txt` into `bio_data/zea_mays_genes/` (defaults: 500 bp upst
 
 | Command | Use for |
 |---------|---------|
-| `run-experiment-sweeps` | Structured sampler (α / K) and FSM sweeps from YAML |
-| `export-designer-results` | Build Excel report from completed JSON results |
+| `run-experiment-sweeps` | Structured sampler (`α` / `K`) and FSM sweeps from YAML; `--export` writes the Excel report |
 | `design-seq` | Ad-hoc single invocation (custom CLI flags) |
 | `gene-fetch` | Fetch a gene region from Ensembl and annotate motif hits |
 
@@ -129,8 +124,6 @@ poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml
 
 # Single sweep, force re-run, export report after
 poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --sweep alpha --force --export
-
-poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
 ```
 
 #### Config
@@ -138,7 +131,8 @@ poetry run export-designer-results -c configs/pareto_experiment_ma0267.yaml
 See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yaml) for the reference experiment:
 
 - `fixed`: shared inputs (target sequences, motif, codon usage, `binding_score_space`, `hit_pval`, `cost_params` {α, β, w}, results root)
-- `sweeps.alpha` / `sweeps.k`: sampler settings; each fixes the other sampler dimension and FSM reduction, then varies `sampler_alpha` or `k`
+- `sweeps.alpha` / `sweeps.k`: sampler settings; each fixes the other sampler dimension and FSM reduction, then varies `sampler_alpha` or `K`
+- `sweeps.alpha.comparison_groups`: named subsets of `sampler_alpha` values for separate alpha-sweep Pareto comparison PNGs (e.g. `const` vs `log_pos`)
 - `sweeps.fsm_size`: FSM reduction; varies `reduce_fsm_by`
 - Unknown keys are rejected (strict validation)
 
@@ -146,14 +140,23 @@ See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yam
 
 Written to `{results_root}/pareto_experiment_report.xlsx` with six sheets: **Overview**, **Summary**, three sweep sheets (**Sweep alpha**, **Sweep K**, **Sweep FSM size**), and **Solutions**.
 
-**Summary** lists all design runs (sorted by `seq_id`, `fsm_size` descending, `k` descending) with no correlations or charts.
+**Summary** lists all design runs (sorted by `seq_id`, `fsm_size` descending, `K` descending).
 
-Each sweep sheet lists that sweep's design runs (same sort order), CORREL formulas on the right, and bar charts in one row below. Bar charts cluster one bar per sequence at each swept value.
+Each sweep sheet lists that sweep's design runs (same sort order).
 
-- **binding_score_mse**: mean squared error between reduced- and origin- FSM binding scores, averaged over Pareto-optimal solutions
-- **binding_score_rmse**: square root of `binding_score_mse`
+Binding approximation error (reduced vs origin FSM scores), using the design score space (`logexp`: squared error of `exp(score)`):
 
-On the FSM size sheet, correlations compare **fsm_size** and **fsm_err** against Hypervolume, binding_sse, and binding_mse.
+Per `k`-mer window (within one solution):
+- **kmer_binding_score_mse**: mean score-space squared error over motif-length windows in the solution
+- **kmer_binding_score_err_std**: standard deviation of those per-window errors
+
+Per run (across Pareto-optimal solutions):
+- **kmer_binding_score_mse_mean** / **kmer_binding_score_mse_solution_std**: mean and std of per-solution `kmer_binding_score_mse`
+
+Per FSM (all de Bruijn `k`-mers / states):
+- **fsm_binding_score_err**: the same mean score-space squared error, averaged uniformly over every origin `k`-mer. Designed-sequence kmer MSE sits on this scale; remaining differences come from which `k`-mers appear in the solution.
+
+Each design run also writes `kmer_binding_score_mse_histogram.png`: a histogram of per-solution `k`-mer binding score MSE, with the solution mean as a solid line and FSM MSE as a dashed line.
 
 ### Ad-hoc runs (`design-seq`)
 
@@ -205,10 +208,14 @@ Each run is written under:
 designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/PowerLawSUS/<sampler_params>/
 ```
 
-Comparison files for one CLI invocation are written at the common parent of those run directories:
+Comparison files for one CLI invocation are written at the common parent of those run directories (never inside an individual run folder):
 
-- `pareto_frontiers.png`, `motif_cost_dists.png`
-- `pareto_comparison.json`: pairwise coverage and normalized hypervolume
-- `pareto_comparison.csv`: per-run `k`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, binding score SSE, FSM reduction error, and 2-objective hypervolume (cost and binding, both minimized)
+- `pareto_frontiers.png` from `design-seq`, or sweep-specific names from `run-experiment-sweeps`:
+  - `sweep_alpha_K100_const_pareto_frontiers.png`, `sweep_alpha_K100_log_pos_pareto_frontiers.png`
+  - `sweep_K_alpha_1.0_log_pos_pareto_frontiers.png`
+  - `sweep_fsm_K100_alpha_1.0_log_pos_pareto_frontiers.png`
+- `pareto_comparison.csv`: per-run `K`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, `k`-mer binding score MSE aggregates, and FSM reduction error
+
+Pareto PNG plots use **lines** with horizontal dashed gray lines at cumulative binding thresholds for 1–3 motif hits. Reduced-FSM runs show a dashed origin (de Bruijn FSM) binding line on per-run `pareto_frontier.png` and on FSM size sweep comparison plots (same color as the solid reduced-FSM line).
 
 All sequences from the same `design-seq` run are also collected in `designer_results/pareto_comparison.csv` (includes a `seq_id` column).

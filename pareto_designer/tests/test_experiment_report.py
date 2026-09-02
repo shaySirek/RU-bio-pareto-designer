@@ -6,29 +6,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pareto_designer.models.context import ParetoResult
 from pareto_designer.views.experiment_report.config import (
     ConfigError,
+    effective_grid,
+    expected_runs,
     load_experiment_config,
+    seq_files,
 )
-from pareto_designer.views.experiment_report.excel_tables import (
-    DESIGN_RUN_HEADERS,
-    ALPHA_CORREL_SECTIONS,
-    design_run_row,
-    write_correlations_block,
-    write_data_block,
-)
-from pareto_designer.views.experiment_report.metrics import (
-    aggregate_cross_sequence,
-    build_design_run_summaries,
-)
-from pareto_designer.models.context import ParetoResult
+from pareto_designer.views.experiment_report.metrics import build_design_run_summaries
 from pareto_designer.views.experiment_report.models import (
     LoadedRun,
     RunParams,
     SamplerParams,
 )
 from pareto_designer.views.experiment_report.paths import (
-    db_fsm_state_count_for_motif,
+    fsm_id_for_ratio,
     fsm_size_from_id,
     parse_run_dir,
 )
@@ -36,7 +29,6 @@ from pareto_designer.views.experiment_report.sweeps import (
     alpha_regime,
     sweep_membership,
 )
-from pareto_designer.shared.seq_design_utils.run_grid import GridMode, run_design_grid
 
 CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / "configs" / "pareto_experiment_ma0267.yaml"
@@ -59,6 +51,8 @@ def _make_result(cost: float, binding: float, origin: float, sid: str = "001"):
         sequence="ACGT",
         n_cost_items=1,
         motif_hits=[],
+        kmer_binding_score_mse=0.01,
+        kmer_binding_score_err_std=0.005,
     )
 
 
@@ -85,6 +79,7 @@ def _make_run(
             "n_solutions": len(solutions),
             "runtime_seconds": 1.0,
             "fsm_binding_score_err": 0.1,
+            "db_fsm_size": 8192,
         },
         solutions=solutions,
         path=Path("dummy/results_metadata.json"),
@@ -94,7 +89,14 @@ def _make_run(
 def test_load_valid_config():
     config = load_experiment_config(CONFIG_PATH)
     assert config.name == "pareto_parameter_sweep_ma0267"
-    assert len(config.expected_runs()) == 13 * len(config.seq_files())
+    n_cells = sum(
+        len(grid.k_values) * len(grid.sampler_alpha) * len(grid.reduce_fsm_by)
+        for grid in (
+            effective_grid(config, name) for name in ("alpha", "k", "fsm_size")
+        )
+    )
+    assert n_cells == 14
+    assert seq_files(config)
 
 
 def test_reject_unknown_top_level_key(tmp_path: Path):
@@ -114,10 +116,13 @@ def test_reject_invalid_sampler_alpha(tmp_path: Path):
         load_experiment_config(bad)
 
 
-def test_fsm_size_from_id():
-    db_size = db_fsm_state_count_for_motif("MA0267.1")
+def test_fsm_id_round_trip():
+    db_size = 16384
     assert fsm_size_from_id("logexp_db_fsm", db_fsm_size=db_size) == (db_size, 0.0)
-    assert fsm_size_from_id("logexp_reduced_fsm_2048", db_fsm_size=db_size)[0] == 2048
+    assert fsm_id_for_ratio("logexp", 0.0, db_size) == ("logexp_db_fsm", db_size)
+    fsm_id, n_states = fsm_id_for_ratio("logexp", 0.875, db_size)
+    assert fsm_id == "logexp_reduced_fsm_2048"
+    assert fsm_size_from_id(fsm_id, db_fsm_size=db_size)[0] == n_states
 
 
 def test_parse_run_dir(tmp_path: Path):
@@ -168,19 +173,7 @@ def test_build_design_run_summary_dedupes():
     summaries = build_design_run_summaries([run], config)
     assert len(summaries) == 1
     assert "alpha" in summaries[0].sweeps
-
-
-def test_cross_sequence_aggregation():
-    summaries = []
-    for seq, hv in [("a", 0.4), ("b", 0.6)]:
-        from pareto_designer.views.experiment_report.metrics import design_run_summary
-
-        run = _make_run(seq, 100, 1.0, True, 0.875, 2048, [_make_result(1, 2, 2)])
-        summaries.append(design_run_summary(run, hv, ["k"]))
-    agg = aggregate_cross_sequence(summaries, "k")
-    assert len(agg) == 1
-    assert agg[0].n_seq == 2
-    assert math.isclose(agg[0].hv_mean, 0.5)
+    assert math.isclose(summaries[0].fsm_binding_score_err, 0.1 / 8192)
 
 
 def test_sort_design_runs():
@@ -192,17 +185,14 @@ def test_sort_design_runs():
     runs = [
         design_run_summary(
             _make_run("b", 50, 1.0, True, 0.875, 2048, [_make_result(1, 2, 2)]),
-            0.4,
             ["k"],
         ),
         design_run_summary(
             _make_run("a", 100, 1.0, True, 0.875, 4096, [_make_result(1, 2, 2)]),
-            0.5,
             ["k"],
         ),
         design_run_summary(
             _make_run("a", 150, 1.0, True, 0.875, 2048, [_make_result(1, 2, 2)]),
-            0.6,
             ["k"],
         ),
     ]
@@ -212,139 +202,109 @@ def test_sort_design_runs():
     assert ordered[1].k == 150
 
 
-def test_correl_formula_in_sweep_sheet(tmp_path: Path):
-    from openpyxl import Workbook
-    from openpyxl.worksheet.formula import ArrayFormula
+def _kmer_run(tmp_path: Path) -> tuple[LoadedRun, ParetoResult, Path]:
+    import numpy as np
 
-    from pareto_designer.views.experiment_report.excel_tables import (
-        write_correlations_block,
-        write_data_block,
-        design_run_row,
+    run_dir = (
+        tmp_path
+        / "seq"
+        / "cost"
+        / "MA0267.1"
+        / "logexp_reduced_fsm_2048"
+        / "PowerLawSUS"
+        / "k_100__alpha_1.0"
     )
-    from pareto_designer.views.experiment_report.metrics import design_run_summary
-
-    wb = Workbook()
-    ws = wb.active
-    header_row = 3
-    run_a = design_run_summary(
-        _make_run("seq_a", 100, 0.0, False, 0.875, 2048, [_make_result(1, 2, 2)]),
-        0.3,
-        ["alpha"],
+    run_dir.mkdir(parents=True)
+    np.save(
+        run_dir / "001.npy",
+        np.column_stack((np.zeros(4), np.array([1.5, 2.5, 2.0, np.nan]))),
     )
-    run_b = design_run_summary(
-        _make_run("seq_b", 100, 1.0, False, 0.875, 2048, [_make_result(1, 2, 2)]),
-        0.7,
-        ["alpha"],
+    meta_path = run_dir / "results_metadata.json"
+    meta_path.write_text("{}", encoding="utf-8")
+    sol = _make_result(1.0, 2.0, 2.1)
+    sol.positional_objectives_file = "001.npy"
+    run = _make_run("seq", 100, 1.0, False, 0.875, 2048, [sol])
+    run.path = meta_path
+    return run, sol, meta_path
+
+
+def test_fill_kmer_binding(tmp_path: Path):
+    import numpy as np
+
+    from pareto_designer.algorithms.spaces import ExpSpace
+    from pareto_designer.shared.seq_design_utils.binding_metrics import (
+        kmer_binding_score_mse,
     )
-    data = write_data_block(
-        ws,
-        header_row,
-        1,
-        DESIGN_RUN_HEADERS,
-        (design_run_row(r) for r in [run_a, run_b]),
+    from pareto_designer.views.experiment_report.kmer_binding import fill_kmer_binding
+
+    run, sol, meta_path = _kmer_run(tmp_path)
+    with patch(
+        "pareto_designer.views.experiment_report.kmer_binding.origin_map_for_motif",
+        return_value=(2, {"AC": 1.0, "CG": 2.0, "GT": 3.0}),
+    ):
+        fill_kmer_binding([run])
+    expected = kmer_binding_score_mse(
+        np.array([1.5, 2.5, 2.0, np.nan]),
+        np.array([1.0, 2.0, 3.0]),
+        ExpSpace,
     )
-    correl_col = len(DESIGN_RUN_HEADERS) + 2
-    correl = write_correlations_block(
-        ws,
-        header_row,
-        correl_col,
-        data,
-        ALPHA_CORREL_SECTIONS,
-    )
-    const_formula = ws.cell(row=header_row + 1, column=correl_col + 1).value
-    assert isinstance(const_formula, ArrayFormula)
-    assert const_formula.text.startswith("=CORREL(IF(")
-    assert correl.end_row == header_row + len(ALPHA_CORREL_SECTIONS)
+    assert math.isclose(sol.kmer_binding_score_mse, expected.mse)
+    assert "kmer_binding_score_mse" not in meta_path.read_text(encoding="utf-8")
 
 
-def test_fsm_err_correl_rows(tmp_path: Path):
-    from openpyxl import Workbook
+def test_fill_kmer_binding_uses_fsm_context(tmp_path: Path):
+    from pareto_designer.views.experiment_report.kmer_binding import fill_kmer_binding
 
-    from pareto_designer.views.experiment_report.excel_tables import FSM_CORREL_SECTIONS
-    from pareto_designer.views.experiment_report.metrics import design_run_summary
-
-    wb = Workbook()
-    ws = wb.active
-    header_row = 3
-    run = design_run_summary(
-        _make_run("seq_a", 100, 1.0, True, 0.875, 2048, [_make_result(1, 2, 2)]),
-        0.5,
-        ["fsm_size"],
-    )
-    data = write_data_block(
-        ws,
-        header_row,
-        1,
-        DESIGN_RUN_HEADERS,
-        (design_run_row(run),),
-    )
-    correl_col = len(DESIGN_RUN_HEADERS) + 2
-    write_correlations_block(ws, header_row, correl_col, data, FSM_CORREL_SECTIONS)
-    size_formula = ws.cell(row=header_row + 1, column=correl_col + 1).value
-    err_formula = ws.cell(row=header_row + 2, column=correl_col + 1).value
-    assert size_formula.startswith("=CORREL(")
-    assert "$C$" in size_formula
-    assert err_formula.startswith("=CORREL(")
-    assert "$O$" in err_formula
+    run, sol, _ = _kmer_run(tmp_path)
+    ctx = MagicMock()
+    ctx.motif_id = "MA0267.1"
+    ctx.motif_length = 2
+    ctx.origin_binding_score_map = {"AC": 1.0, "CG": 2.0, "GT": 3.0}
+    with patch(
+        "pareto_designer.views.experiment_report.kmer_binding.origin_map_for_motif"
+    ) as mock_origin:
+        fill_kmer_binding([run], fsm_contexts=[ctx])
+    mock_origin.assert_not_called()
+    assert math.isfinite(sol.kmer_binding_score_mse)
 
 
-def test_grouped_bar_chart(tmp_path: Path):
-    import zipfile
-
-    from openpyxl import Workbook
-
-    from pareto_designer.views.experiment_report.excel_charts import (
-        add_grouped_bar_chart,
-    )
-
-    wb = Workbook()
-    ws = wb.active
-    add_grouped_bar_chart(
-        ws,
-        "A1",
-        title="test: hypervolume vs k",
-        category_labels=["50", "100", "150"],
-        series=[("seq_a", [0.1, 0.2, 0.12]), ("seq_b", [0.15, 0.18, 0.22])],
-    )
-    out = tmp_path / "chart.xlsx"
-    wb.save(out)
-    with zipfile.ZipFile(out) as zf:
-        xml = zf.read("xl/charts/chart1.xml").decode()
-    assert xml.count("<ser>") == 2
-    assert "barChart" in xml
-    assert "clustered" in xml or 'grouping val="clustered"' in xml
-    assert "<legend>" in xml
+def test_expected_runs_uses_passed_fsm_contexts():
+    config = load_experiment_config(CONFIG_PATH)
+    contexts = []
+    for ratio, fsm_id, size in (
+        (0.0, "logexp_db_fsm", 16384),
+        (0.75, "logexp_reduced_fsm_4096", 4096),
+        (0.875, "logexp_reduced_fsm_2048", 2048),
+        (0.9375, "logexp_reduced_fsm_1024", 1024),
+    ):
+        ctx = MagicMock()
+        ctx.reduce_fsm_by = ratio
+        ctx.fsm_id = fsm_id
+        ctx.size = size
+        contexts.append(ctx)
+    with patch(
+        "pareto_designer.views.experiment_report.config.db_fsm_state_count_for_motif"
+    ) as mock_db:
+        runs = expected_runs(config, fsm_contexts=contexts)
+    mock_db.assert_not_called()
+    assert {r.params.fsm_id for r in runs if r.sweep == "alpha"} == {
+        "logexp_reduced_fsm_2048"
+    }
+    assert "logexp_db_fsm" in {r.params.fsm_id for r in runs if r.sweep == "fsm_size"}
+    assert all("transition_0.50" in str(r.metadata_path) for r in runs)
 
 
-@patch("pareto_designer.shared.seq_design_utils.run_grid.SequenceDesigner")
-def test_run_design_grid_delegates(mock_designer_cls):
-    mock_designer = MagicMock()
-    mock_exporter = MagicMock()
-    mock_exporter._results = []
-    mock_designer.with_score_function_builder.return_value = mock_designer
-    mock_designer.with_target_sequence.return_value = mock_designer
-    mock_designer.with_fsm_context.return_value = mock_designer
-    mock_designer.with_sampler.return_value = mock_designer
-    mock_designer.run.return_value = mock_exporter
-    mock_designer_cls.return_value = mock_designer
-
-    score_builder = MagicMock()
-    fsm_ctx = MagicMock()
-    fsm_ctx.reduce_fsm_by = 0.875
-    fsm_ctx.fsm_id = "logexp_reduced_fsm_2048"
-    fsm_ctx.motif_id = "MA0267.1"
-    fsm_builder = MagicMock()
-    fsm_builder.iter_contexts.return_value = [fsm_ctx]
-
-    seq_file = Path("seq.txt")
-    batches = run_design_grid(
-        [seq_file],
-        score_builder,
-        fsm_builder,
-        k_values=[100],
-        sampler_alpha=["1.0"],
-        reduce_fsm_by=[0.875],
-        mode=GridMode.RUN,
-    )
-    assert seq_file.stem in batches
-    mock_designer.run.assert_called_with(dry_run=False)
+def test_expected_runs_derives_fsm_ids_without_builder():
+    config = load_experiment_config(CONFIG_PATH)
+    with patch(
+        "pareto_designer.views.experiment_report.config.db_fsm_state_count_for_motif",
+        return_value=16384,
+    ):
+        runs = expected_runs(config)
+    assert len(runs) == 14 * len(seq_files(config))
+    assert {r.params.fsm_id for r in runs if r.sweep == "fsm_size"} == {
+        "logexp_db_fsm",
+        "logexp_reduced_fsm_4096",
+        "logexp_reduced_fsm_2048",
+        "logexp_reduced_fsm_1024",
+    }

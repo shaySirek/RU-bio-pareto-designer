@@ -119,3 +119,9 @@ class ScoreSpaceOption(Enum):
             ScoreSpaceOption.Linear: LinearSpace,
             ScoreSpaceOption.LogExp: ExpSpace,
         }[self]
+
+
+def score_space_from_fsm_id(fsm_id: str) -> Type[ScoreSpace]:
+    if fsm_id.startswith(f"{ScoreSpaceOption.LogExp.value}_"):
+        return ExpSpace
+    return LinearSpace

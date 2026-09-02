@@ -13,7 +13,10 @@ sweeps:
   alpha:
     fixed: { k: 100, reduce_fsm_by: 0.875 }
     vary:
-      sampler_alpha: [0.0, 0.5, 1.0, 0.5_log_pos, 1.0_log_pos, 2.0_log_pos]
+      sampler_alpha: [0.0, 0.5, 1.0, 2.0, 0.5_log_pos, 1.0_log_pos, 2.0_log_pos]
+    comparison_groups:
+      const: [0.0, 0.5, 1.0, 2.0]
+      log_pos: [1.0, 2.0, 1.0_log_pos, 2.0_log_pos]
   k:
     fixed: { reduce_fsm_by: 0.875, sampler_alpha: 1.0_log_pos }
     vary:

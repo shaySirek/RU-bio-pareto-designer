@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from openpyxl import Workbook
 
+from pareto_designer.models.context import FSMContext
 from pareto_designer.views.experiment_report import config as config_module
 from pareto_designer.views.experiment_report.excel_tables import (
     write_overview_sheet,
@@ -29,15 +31,17 @@ class ExperimentReportExporter:
         self,
         results_root: Path,
         config: ExperimentConfig | None = None,
+        fsm_contexts: Sequence[FSMContext] | None = None,
     ):
         self.results_root = Path(results_root)
         self.config = config
+        self.fsm_contexts = list(fsm_contexts) if fsm_contexts else []
         self.runs = []
         self.design_runs: list[DesignRunSummary] = []
         self.solutions: list[SolutionRecord] = []
 
     def load(self) -> None:
-        self.runs = load_all(self.results_root)
+        self.runs = load_all(self.results_root, fsm_contexts=self.fsm_contexts)
         assign_sweep_memberships(self.runs, self.config)
         self.design_runs = build_design_run_summaries(self.runs, self.config)
         self.solutions = []
@@ -71,7 +75,9 @@ class ExperimentReportExporter:
 
     def _build_checklist(self) -> list[tuple[str, str, str, bool]]:
         if self.config is not None:
-            expected = config_module.expected_runs(self.config)
+            expected = config_module.expected_runs(
+                self.config, fsm_contexts=self.fsm_contexts
+            )
             return [
                 (
                     item.seq_id,

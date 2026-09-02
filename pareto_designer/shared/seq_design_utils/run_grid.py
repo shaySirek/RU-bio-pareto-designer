@@ -1,9 +1,11 @@
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 
 from loguru import logger
 
 from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
+from pareto_designer.models.context import FSMContext
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.pareto_utils import parse_sampler_alpha
@@ -25,13 +27,14 @@ class GridMode(StrEnum):
 def run_design_grid(
     seq_files: list[Path],
     score_function_builder: ScoreFunctionBuilder,
-    fsm_builder: FSMBuilder,
+    fsm_builder: FSMBuilder | None = None,
     *,
     k_values: list[int],
     sampler_alpha: list[str],
     reduce_fsm_by: list[float],
     mode: GridMode = GridMode.RUN,
     results_root: Path | None = None,
+    fsm_contexts: Sequence[FSMContext] | None = None,
 ) -> dict[str, dict[str, ParetoExporter]]:
     dry_run = mode == GridMode.DRY_RUN
     skip_existing = mode == GridMode.SKIP_EXISTING
@@ -40,11 +43,11 @@ def run_design_grid(
         score_function_builder
     )
     allowed_ratios = set(reduce_fsm_by)
-    fsm_contexts = [
-        ctx
-        for ctx in fsm_builder.iter_contexts(dry_run=dry_run)
-        if ctx.reduce_fsm_by in allowed_ratios
-    ]
+    if fsm_contexts is None:
+        if fsm_builder is None:
+            raise ValueError("fsm_builder is required when fsm_contexts is not given")
+        fsm_contexts = list(fsm_builder.iter_contexts(dry_run=dry_run))
+    fsm_contexts = [ctx for ctx in fsm_contexts if ctx.reduce_fsm_by in allowed_ratios]
     batches: dict[str, dict[str, ParetoExporter]] = {}
 
     for seq_file in seq_files:
@@ -63,14 +66,9 @@ def run_design_grid(
                     meta_path = seq_designer.metadata_path(fsm_ctx, sampler)
                     if skip_existing and meta_path.exists():
                         logger.info(f"Skipping existing run: {meta_path.parent}")
-                        if dry_run:
-                            exporter = seq_designer.with_sampler(sampler).run(
-                                dry_run=True
-                            )
-                            if exporter._results:
-                                exporters[f"{fsm_ctx.fsm_id}__{sampler.params}"] = (
-                                    exporter
-                                )
+                        exporter = seq_designer.with_sampler(sampler).run(dry_run=True)
+                        if exporter._results:
+                            exporters[f"{fsm_ctx.fsm_id}__{sampler.params}"] = exporter
                         continue
                     if dry_run and not meta_path.exists():
                         continue

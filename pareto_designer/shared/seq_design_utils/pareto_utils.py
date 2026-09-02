@@ -1,4 +1,3 @@
-import json
 from os.path import commonpath
 from pathlib import Path
 from typing import Any, Iterator
@@ -6,91 +5,17 @@ from typing import Any, Iterator
 from loguru import logger
 
 import numpy as np
-from pymoo.indicators.hv import Hypervolume
 
 from pareto_designer.shared.binding_utils import motif_hit_binding_thresholds
 from pareto_designer.shared.csv_writer import write_results_stream
+from pareto_designer.shared.seq_design_utils.binding_metrics import (
+    run_kmer_binding_score_mse_summary,
+)
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.views.pareto_frontier.png_exporter import (
     render_pareto_frontiers,
-    render_motif_cost_dist,
 )
-
-
-def compare_frontiers(
-    frontiers: dict[str, np.ndarray],
-    output_file: Path | None = None,
-    pad: float = 0.1,
-) -> dict[str, float]:
-    if not frontiers:
-        raise ValueError("The dictionary of frontiers cannot be empty.")
-    if pad <= 0.0:
-        raise ValueError("Pad must be strictly positive.")
-
-    frontier_names = list(frontiers.keys())
-    frontier_arrays = [np.atleast_2d(frontiers[name])[:, :2] for name in frontier_names]
-    num_frontiers = len(frontier_arrays)
-    all_points = np.vstack(frontier_arrays)
-    num_objectives = all_points.shape[1]
-
-    global_min = np.min(all_points, axis=0)
-    global_max = np.max(all_points, axis=0)
-    range_diff = global_max - global_min
-    range_diff[range_diff == 0] = 1.0
-    all_points_normalized = (all_points - global_min) / range_diff
-    split_indices = np.cumsum([f.shape[0] for f in frontier_arrays])[:-1]
-    normalized_frontiers = np.split(all_points_normalized, split_indices, axis=0)
-
-    logger.debug(
-        f"Comparing frontiers using Hypervolume [{global_min=}, {global_max=}, {pad=}]"
-    )
-    norm_ref_point = np.full(num_objectives, 1.0 + pad)
-    hv_indicator = Hypervolume(ref_point=norm_ref_point)
-    max_possible_volume = np.prod(norm_ref_point)
-    normalized_hvs = [
-        float(hv_indicator(norm_arr) / max_possible_volume)
-        for norm_arr in normalized_frontiers
-    ]
-
-    coverage_matrix = np.zeros((num_frontiers, num_frontiers))
-    for i in range(num_frontiers):
-        for j in range(num_frontiers):
-            if i == j:
-                coverage_matrix[i, j] = 1.0
-                continue
-
-            combined_norm = np.vstack(
-                (normalized_frontiers[i], normalized_frontiers[j])
-            )
-            hv_union = hv_indicator(combined_norm)
-            hv_i_raw = normalized_hvs[i] * max_possible_volume
-            hv_j_raw = normalized_hvs[j] * max_possible_volume
-            intersection_volume = max(0.0, hv_i_raw + hv_j_raw - hv_union)
-            if normalized_hvs[j] > 0:
-                coverage_matrix[i, j] = float(intersection_volume / hv_j_raw)
-            else:
-                coverage_matrix[i, j] = 0.0
-
-    output_data = {
-        "global_bounds": {"min": global_min.tolist(), "max": global_max.tolist()},
-        "metrics": {
-            name: {
-                "normalized_hypervolume": normalized_hvs[i],
-                "coverage_over_others": {
-                    frontier_names[j]: float(coverage_matrix[i, j])
-                    for j in range(num_frontiers)
-                },
-            }
-            for i, name in enumerate(frontier_names)
-        },
-    }
-
-    if output_file is not None:
-        with output_file.open("w") as f:
-            json.dump(output_data, f, indent=4)
-
-    return {name: normalized_hvs[i] for i, name in enumerate(frontier_names)}
 
 
 def sampler_alpha_label(alpha: float, log_pos: bool) -> str:
@@ -106,7 +31,93 @@ def parse_sampler_alpha(exp_str: str) -> tuple[float, bool]:
     return alpha, log_pos
 
 
-def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, Any]]:
+def _long_path(path: Path) -> Path:
+    resolved = path.resolve()
+    if resolved.drive:
+        path_str = str(resolved)
+        if not path_str.startswith("\\\\?\\"):
+            return Path("\\\\?\\" + path_str)
+    return resolved
+
+
+def _is_design_run_dir(path: Path) -> bool:
+    return (_long_path(path) / "results_metadata.json").exists()
+
+
+def sweep_pareto_frontiers_filename(
+    sweep_name: str, grid, *, alpha_group: str | None = None
+) -> str:
+    if sweep_name == "alpha":
+        suffix = f"_{alpha_group}" if alpha_group else ""
+        return f"sweep_alpha_K{grid.k_values[0]}{suffix}_pareto_frontiers.png"
+    if sweep_name == "k":
+        return f"sweep_K_alpha_{grid.sampler_alpha[0]}_pareto_frontiers.png"
+    if sweep_name == "fsm_size":
+        return (
+            f"sweep_fsm_K{grid.k_values[0]}_alpha_{grid.sampler_alpha[0]}"
+            "_pareto_frontiers.png"
+        )
+    raise ValueError(f"Unknown sweep name: {sweep_name!r}")
+
+
+def _exporter_alpha_label(exporter: ParetoExporter) -> str:
+    return _sampler_alpha_label(exporter.ctx.run_ctx.sampler)
+
+
+def _ordered_labeled_frontiers_for_alphas(
+    exporters: dict[str, ParetoExporter],
+    frontiers: dict[str, np.ndarray],
+    labels: dict[str, str],
+    alpha_labels: tuple[str, ...],
+) -> dict[str, np.ndarray]:
+    grouped: dict[str, np.ndarray] = {}
+    for alpha in alpha_labels:
+        for variant, exporter in exporters.items():
+            if _exporter_alpha_label(exporter) != alpha:
+                continue
+            if variant not in frontiers:
+                continue
+            grouped[labels[variant]] = frontiers[variant]
+            break
+    return grouped
+
+
+def _render_comparison_frontiers(
+    labeled_frontiers: dict[str, np.ndarray],
+    comparison_png: Path,
+    max_cost: float,
+    binding_range: tuple[float, float],
+    hit_thresholds: list[float],
+    *,
+    origin_frontiers: dict[str, np.ndarray] | None = None,
+    db_fsm_labels: set[str] | None = None,
+) -> None:
+    labeled_origin = None
+    if origin_frontiers is not None:
+        labeled_origin = {
+            label: origin_frontiers[label]
+            for label in labeled_frontiers
+            if label in origin_frontiers
+        }
+    render_pareto_frontiers(
+        labeled_frontiers,
+        comparison_png,
+        max_cost,
+        binding_range,
+        hit_thresholds,
+        origin_frontiers=labeled_origin,
+        db_fsm_labels=db_fsm_labels,
+    )
+
+
+def render_and_compare(
+    exporters: dict[str, ParetoExporter],
+    *,
+    sweep_name: str | None = None,
+    sweep_grid=None,
+    skip_render_per_solution: bool = False,
+    alpha_comparison_groups: tuple[tuple[str, tuple[str, ...]], ...] | None = None,
+) -> list[dict[str, Any]]:
     if not exporters:
         return []
 
@@ -116,6 +127,7 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
     max_binding = -float("inf")
     min_positional_binding = float("inf")
     max_positional_binding = -float("inf")
+    show_origin_lines = sweep_name == "fsm_size"
     for exporter in exporters.values():
         if not exporter._results:
             continue
@@ -123,6 +135,9 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
         max_positional_cost = max(max_positional_cost, exporter.max_positional_cost)
         min_binding = min(min_binding, exporter.min_binding)
         max_binding = max(max_binding, exporter.max_binding)
+        if show_origin_lines:
+            min_binding = min(min_binding, exporter.min_origin_binding)
+            max_binding = max(max_binding, exporter.max_origin_binding)
         min_positional_binding = min(
             min_positional_binding, exporter.min_positional_binding
         )
@@ -140,12 +155,15 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
     positional_binding_range = (min_positional_binding, max_positional_binding)
 
     seen_fsms: set[str] = set()
-    for exporter in exporters.values():
-        fsm_id = exporter.ctx.fsm_ctx.fsm_id
-        if fsm_id in seen_fsms:
-            continue
-        seen_fsms.add(fsm_id)
-        exporter.render_target_sequence(max_positional_cost, positional_binding_range)
+    if not skip_render_per_solution:
+        for exporter in exporters.values():
+            fsm_id = exporter.ctx.fsm_ctx.fsm_id
+            if fsm_id in seen_fsms:
+                continue
+            seen_fsms.add(fsm_id)
+            exporter.render_target_sequence(
+                max_positional_cost, positional_binding_range
+            )
 
     frontiers: dict[str, np.ndarray] = {}
     for variant, exporter in exporters.items():
@@ -156,6 +174,7 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
             max_positional_cost,
             positional_binding_range,
             hit_thresholds,
+            skip_render_per_solution=skip_render_per_solution,
         )
         if exporter._results:
             frontiers[variant] = exporter.frontier
@@ -163,31 +182,65 @@ def render_and_compare(exporters: dict[str, ParetoExporter]) -> list[dict[str, A
     comparison_dir = Path(
         commonpath([str(e.output_path.resolve()) for e in exporters.values()])
     )
+    write_comparison = not _is_design_run_dir(comparison_dir)
     labels = _display_labels(exporters)
     labeled_frontiers = {labels[name]: frontier for name, frontier in frontiers.items()}
 
-    hypervolumes: dict[str, float] = {}
-    if frontiers:
-        hypervolumes = compare_frontiers(
-            frontiers, comparison_dir / "pareto_comparison.json"
-        )
-        render_pareto_frontiers(
-            labeled_frontiers,
-            comparison_dir / "pareto_frontiers.png",
-            max_cost,
-            binding_range,
-            hit_thresholds,
-        )
-        render_motif_cost_dist(
-            labeled_frontiers,
-            comparison_dir / "motif_cost_dists.png",
-        )
+    origin_frontiers: dict[str, np.ndarray] | None = None
+    db_fsm_labels: set[str] | None = None
+    if show_origin_lines:
+        origin_frontiers = {
+            labels[name]: exporter.origin_frontier
+            for name, exporter in exporters.items()
+            if name in frontiers
+        }
+        db_fsm_labels = {
+            labels[name]
+            for name, exporter in exporters.items()
+            if name in frontiers and exporter.ctx.fsm_ctx.reduce_fsm_by == 0
+        }
 
-    rows = list(_comparison_rows(exporters, hypervolumes))
-    write_results_stream(
-        iter(rows),
-        comparison_dir / "pareto_comparison.csv",
-    )
+    if write_comparison and frontiers:
+        if sweep_name == "alpha" and sweep_grid is not None and alpha_comparison_groups:
+            for group_name, alpha_labels in alpha_comparison_groups:
+                group_frontiers = _ordered_labeled_frontiers_for_alphas(
+                    exporters, frontiers, labels, alpha_labels
+                )
+                if not group_frontiers:
+                    continue
+                comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
+                    sweep_name, sweep_grid, alpha_group=group_name
+                )
+                _render_comparison_frontiers(
+                    group_frontiers,
+                    comparison_png,
+                    max_cost,
+                    binding_range,
+                    hit_thresholds,
+                )
+        else:
+            if sweep_name is not None and sweep_grid is not None:
+                comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
+                    sweep_name, sweep_grid
+                )
+            else:
+                comparison_png = comparison_dir / "pareto_frontiers.png"
+            _render_comparison_frontiers(
+                labeled_frontiers,
+                comparison_png,
+                max_cost,
+                binding_range,
+                hit_thresholds,
+                origin_frontiers=origin_frontiers,
+                db_fsm_labels=db_fsm_labels,
+            )
+
+    rows = list(_comparison_rows(exporters))
+    if write_comparison:
+        write_results_stream(
+            iter(rows),
+            comparison_dir / "pareto_comparison.csv",
+        )
     return rows
 
 
@@ -199,13 +252,7 @@ def _sampler_alpha_label(sampler: SamplingMethod) -> str:
 
 
 def _fsm_fold_label(exporter: ParetoExporter) -> str:
-    ctx = exporter.ctx.fsm_ctx
-    db_size, n_states = ctx.db_fsm_size, ctx.size
-    if n_states == db_size:
-        return f"DB ({db_size})"
-    if n_states and db_size % n_states == 0:
-        return f"{db_size // n_states}-fold ({n_states})"
-    return f"|V|={n_states}"
+    return f"|V|={exporter.ctx.fsm_ctx.size}"
 
 
 def _display_labels(exporters: dict[str, ParetoExporter]) -> dict[str, str]:
@@ -228,12 +275,11 @@ def _display_labels(exporters: dict[str, ParetoExporter]) -> dict[str, str]:
     return labels
 
 
-def _comparison_rows(
-    exporters: dict[str, ParetoExporter], hypervolumes: dict[str, float]
-) -> Iterator[dict[str, Any]]:
+def _comparison_rows(exporters: dict[str, ParetoExporter]) -> Iterator[dict[str, Any]]:
     for variant, exporter in exporters.items():
         sampler = exporter.ctx.run_ctx.sampler
         fsm_ctx = exporter.ctx.fsm_ctx
+        kmer_mse = run_kmer_binding_score_mse_summary(exporter._results)
         yield {
             "seq_id": exporter.ctx.run_ctx.target_sequence_id,
             "variant": variant,
@@ -244,7 +290,8 @@ def _comparison_rows(
             "alpha": getattr(sampler, "alpha", None),
             "log_pos": getattr(sampler, "use_dynamic_log_position_exponent", False),
             "n_solutions": len(exporter._results),
-            "binding_score_sse": exporter.binding_score_sse,
+            "kmer_binding_score_mse_mean": kmer_mse.mse,
+            "kmer_binding_score_mse_solution_std": kmer_mse.err_std,
+            "db_fsm_size": fsm_ctx.db_fsm_size,
             "fsm_binding_score_err": exporter.fsm_binding_score_err,
-            "normalized_hypervolume": hypervolumes.get(variant, float("nan")),
         }

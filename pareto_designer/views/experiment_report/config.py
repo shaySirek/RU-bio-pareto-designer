@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from itertools import product
 from pathlib import Path
 
@@ -9,14 +10,10 @@ import yaml
 from pareto_designer.algorithms.spaces import ScoreSpaceOption
 from pareto_designer.algorithms.seq_design.sampling import PowerLawSUS
 from pareto_designer.models.context import FSMContext
-from pareto_designer.shared.seq_design_utils.fsm_builder import FSMBuilder
 from pareto_designer.shared.seq_design_utils.pareto_utils import parse_sampler_alpha
 from pareto_designer.shared.seq_design_utils.run_paths import (
     format_cost_params_str,
     metadata_path,
-)
-from pareto_designer.shared.seq_design_utils.score_function_builder import (
-    ScoreFunctionBuilder,
 )
 from pareto_designer.views.experiment_report.models import (
     ExpectedRun,
@@ -24,6 +21,10 @@ from pareto_designer.views.experiment_report.models import (
     RunParams,
     SamplerParams,
     SweepGrid,
+)
+from pareto_designer.views.experiment_report.paths import (
+    db_fsm_state_count_for_motif,
+    fsm_id_for_ratio,
 )
 
 SAMPLER_ALPHA_RE = re.compile(r"^\d+(\.\d+)?(_log_pos)?$")
@@ -185,9 +186,28 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
     )
 
 
+def _validate_alpha_comparison_groups(
+    groups: dict,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    _require_type(groups, dict, "sweeps.alpha.comparison_groups")
+    if not groups:
+        raise ConfigError("sweeps.alpha.comparison_groups must be non-empty")
+    result: list[tuple[str, tuple[str, ...]]] = []
+    for name, alphas in groups.items():
+        group_name = _require_type(name, str, "comparison group name")
+        if not group_name.strip():
+            raise ConfigError("comparison group name must be non-empty")
+        validated = _validate_sampler_alpha(alphas)
+        result.append((group_name, tuple(validated)))
+    return tuple(result)
+
+
 def _validate_sweep_entry(name: str, entry: dict) -> None:
+    allowed_keys = frozenset({"fixed", "vary"})
+    if name == "alpha":
+        allowed_keys = frozenset({"fixed", "vary", "comparison_groups"})
     _require_type(entry, dict, f"sweeps.{name}")
-    _reject_unknown(entry, frozenset({"fixed", "vary"}), f"sweeps.{name}")
+    _reject_unknown(entry, allowed_keys, f"sweeps.{name}")
     fixed = _require_type(entry["fixed"], dict, f"sweeps.{name}.fixed")
     vary = _require_type(entry["vary"], dict, f"sweeps.{name}.vary")
     if len(vary) != 1:
@@ -203,6 +223,9 @@ def _validate_sweep_entry(name: str, entry: dict) -> None:
         if ratio < 0 or ratio >= 1:
             raise ConfigError("sweeps.alpha.fixed.reduce_fsm_by must be in [0, 1)")
         _validate_sampler_alpha(vary["sampler_alpha"])
+        if "comparison_groups" not in entry:
+            raise ConfigError("sweeps.alpha.comparison_groups is required")
+        _validate_alpha_comparison_groups(entry["comparison_groups"])
     elif name == "k":
         _reject_unknown(fixed, K_FIXED_KEYS, f"sweeps.{name}.fixed")
         _reject_unknown(vary, frozenset({"k"}), f"sweeps.{name}.vary")
@@ -252,6 +275,18 @@ def effective_grid(config: ExperimentConfig, sweep_name: str) -> SweepGrid:
 ExperimentConfig.effective_grid = effective_grid  # type: ignore[method-assign]
 
 
+def alpha_comparison_groups(
+    config: ExperimentConfig,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    entry = config.sweeps["alpha"]
+    if "comparison_groups" not in entry:
+        raise ConfigError("sweeps.alpha.comparison_groups is required")
+    return _validate_alpha_comparison_groups(entry["comparison_groups"])
+
+
+ExperimentConfig.alpha_comparison_groups = alpha_comparison_groups  # type: ignore[method-assign]
+
+
 def seq_files(config: ExperimentConfig) -> list[Path]:
     target = Path(config.fixed["target_sequences"])
     if target.is_file():
@@ -270,58 +305,65 @@ def report_output_path(config: ExperimentConfig) -> Path:
 ExperimentConfig.report_output_path = report_output_path  # type: ignore[method-assign]
 
 
-def _fsm_contexts_by_ratio(config: ExperimentConfig) -> dict[float, FSMContext]:
-    ratios: set[float] = set()
+def _cost_params_str(config: ExperimentConfig) -> str:
+    cost_params = config.fixed["cost_params"]
+    return format_cost_params_str(
+        {
+            "Transition": float(cost_params["alpha"]),
+            "Transversion": float(cost_params["beta"]),
+            "Non-synonymous codon": float(cost_params["w"]),
+        }
+    )
+
+
+def _fsm_info_by_ratio(
+    config: ExperimentConfig,
+    fsm_contexts: Sequence[FSMContext] | None = None,
+) -> dict[float, tuple[str, int]]:
+    by_ratio: dict[float, tuple[str, int]] = {}
+    if fsm_contexts:
+        for ctx in fsm_contexts:
+            by_ratio[ctx.reduce_fsm_by] = (ctx.fsm_id, ctx.size)
+
+    needed: set[float] = set()
     for sweep_name in SWEEP_NAMES:
-        ratios.update(effective_grid(config, sweep_name).reduce_fsm_by)
+        needed.update(effective_grid(config, sweep_name).reduce_fsm_by)
+    missing = [ratio for ratio in needed if ratio not in by_ratio]
+    if not missing:
+        return by_ratio
 
-    matrix_id = config.fixed["matrix_id"]
-    binding = ScoreSpaceOption(config.fixed["binding_score_space"])
-    builder = (
-        FSMBuilder()
-        .with_matrix_id(matrix_id)
-        .with_binding_score_space(binding)
-        .with_fsm_reduction(None, sorted(ratios))
-    )
-    contexts: dict[float, FSMContext] = {}
-    for ctx in builder.iter_contexts(dry_run=True):
-        for ratio in ratios:
-            if abs(ctx.reduce_fsm_by - ratio) < 1e-9:
-                contexts[ratio] = ctx
-                break
-    return contexts
-
-
-def _cost_params_str(config: ExperimentConfig, seq_file: Path) -> str:
-    score_builder = (
-        ScoreFunctionBuilder()
-        .with_target_sequence(seq_file)
-        .with_codon_usage(Path(config.fixed["codon_usage"]))
-        .with_params(**config.fixed["cost_params"])
-    )
-    return format_cost_params_str(score_builder.build().params)
+    space = str(config.fixed["binding_score_space"])
+    db_size = db_fsm_state_count_for_motif(config.fixed["matrix_id"])
+    for ratio in missing:
+        by_ratio[ratio] = fsm_id_for_ratio(space, ratio, db_size)
+    return by_ratio
 
 
 def _run_params(
     seq_id: str,
     k: int,
     alpha_str: str,
-    fsm_ctx: FSMContext,
+    fsm_id: str,
+    fsm_size: int,
+    reduce_fsm_by: float,
 ) -> RunParams:
     alpha, log_pos = parse_sampler_alpha(alpha_str)
     return RunParams(
         seq_id=seq_id,
-        fsm_id=fsm_ctx.fsm_id,
-        fsm_size=fsm_ctx.size,
-        reduce_fsm_by=fsm_ctx.reduce_fsm_by,
+        fsm_id=fsm_id,
+        fsm_size=fsm_size,
+        reduce_fsm_by=reduce_fsm_by,
         sampler=SamplerParams(k=k, alpha=alpha, log_pos=log_pos),
     )
 
 
-def expected_runs(config: ExperimentConfig) -> list[ExpectedRun]:
-    fsm_by_ratio = _fsm_contexts_by_ratio(config)
+def expected_runs(
+    config: ExperimentConfig,
+    fsm_contexts: Sequence[FSMContext] | None = None,
+) -> list[ExpectedRun]:
+    fsm_by_ratio = _fsm_info_by_ratio(config, fsm_contexts)
     seq_paths = seq_files(config)
-    cost_params_str = _cost_params_str(config, seq_paths[0])
+    cost_params_str = _cost_params_str(config)
     root = Path(config.fixed["results_root"])
     matrix_id = config.fixed["matrix_id"]
     runs: list[ExpectedRun] = []
@@ -333,8 +375,8 @@ def expected_runs(config: ExperimentConfig) -> list[ExpectedRun]:
             for k, alpha_str, ratio in product(
                 grid.k_values, grid.sampler_alpha, grid.reduce_fsm_by
             ):
-                fsm_ctx = fsm_by_ratio[ratio]
-                params = _run_params(seq_id, k, alpha_str, fsm_ctx)
+                fsm_id, fsm_size = fsm_by_ratio[ratio]
+                params = _run_params(seq_id, k, alpha_str, fsm_id, fsm_size, ratio)
                 sampler = PowerLawSUS(
                     params.sampler.k,
                     params.sampler.alpha,
@@ -350,7 +392,7 @@ def expected_runs(config: ExperimentConfig) -> list[ExpectedRun]:
                             seq_id,
                             cost_params_str,
                             matrix_id,
-                            fsm_ctx.fsm_id,
+                            fsm_id,
                             sampler,
                         ),
                     )

@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip optimization and re-render existing results",
     )
     parser.add_argument(
+        "--skip-render-per-solution",
+        action="store_true",
+        help="Skip per-solution HTML and heatmap rendering (faster plot-only re-render)",
+    )
+    parser.add_argument(
         "--reduce-fsm-max-error",
         type=float,
         default=None,
@@ -144,7 +149,12 @@ def main() -> None:
     all_rows: list[dict[str, Any]] = []
     for exporters in batches.values():
         if exporters:
-            all_rows.extend(render_and_compare(exporters))
+            all_rows.extend(
+                render_and_compare(
+                    exporters,
+                    skip_render_per_solution=args.skip_render_per_solution,
+                )
+            )
 
     if all_rows:
         write_results_stream(

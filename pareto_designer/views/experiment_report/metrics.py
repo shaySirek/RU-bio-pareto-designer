@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import math
-from collections import defaultdict
-
-import numpy as np
-
-from pareto_designer.shared.seq_design_utils.binding_metrics import binding_score_sse
-from pareto_designer.shared.seq_design_utils.pareto_utils import compare_frontiers
+from pareto_designer.shared.seq_design_utils.binding_metrics import (
+    fsm_binding_score_mse,
+    run_kmer_binding_score_mse_summary,
+)
 from pareto_designer.views.experiment_report.models import (
-    CrossSequenceAggregate,
     DesignRunSummary,
     ExperimentConfig,
     LoadedRun,
@@ -41,6 +37,8 @@ def solution_records(
             cost=r.cost,
             binding_score=r.binding_score,
             origin_binding_score=r.origin_binding_score,
+            kmer_binding_score_mse=r.kmer_binding_score_mse,
+            kmer_binding_score_err_std=r.kmer_binding_score_err_std,
             n_motif_hits=r.n_motif_hits,
             n_cost_items=r.n_cost_items,
         )
@@ -68,16 +66,11 @@ def parse_runtime_seconds(metadata: dict) -> float:
 
 
 def design_run_summary(
-    run: LoadedRun, hv: float | None, sweeps: list[str] | None = None
+    run: LoadedRun, sweeps: list[str] | None = None
 ) -> DesignRunSummary:
     p = run.params
     s = p.sampler
-    sse = binding_score_sse(run.solutions)
-    n = len(run.solutions)
-    binding_score_mse = sse / n if n else float("nan")
-    binding_score_rmse = (
-        math.sqrt(binding_score_mse) if n and binding_score_mse >= 0 else float("nan")
-    )
+    kmer_mse = run_kmer_binding_score_mse_summary(run.solutions)
     meta = run.metadata
     return DesignRunSummary(
         seq_id=p.seq_id,
@@ -89,44 +82,16 @@ def design_run_summary(
         log_pos=s.log_pos,
         alpha_label=s.alpha_label,
         sweeps=",".join(sweeps or []),
-        n_solutions=meta.get("n_solutions", n),
+        n_solutions=meta.get("n_solutions", len(run.solutions)),
         runtime_s=parse_runtime_seconds(meta),
-        binding_score_sse=sse,
-        binding_score_mse=binding_score_mse,
-        binding_score_rmse=binding_score_rmse,
-        fsm_binding_score_err=float(meta.get("fsm_binding_score_err", float("nan"))),
-        hypervolume=hv,
+        kmer_binding_score_mse_mean=kmer_mse.mse,
+        kmer_binding_score_mse_solution_std=kmer_mse.err_std,
+        db_fsm_size=int(meta.get("db_fsm_size", float("nan"))),
+        fsm_binding_score_err=fsm_binding_score_mse(
+            float(meta.get("fsm_binding_score_err", float("nan"))),
+            int(meta.get("db_fsm_size", 0) or 0),
+        ),
     )
-
-
-def _frontier_key(run: LoadedRun) -> str:
-    p = run.params
-    return f"{p.fsm_id}__k_{p.sampler.k}__{p.sampler.alpha_label}"
-
-
-def compute_hypervolumes(runs: list[LoadedRun]) -> dict[tuple, float]:
-    grouped: dict[str, list[LoadedRun]] = defaultdict(list)
-    for run in runs:
-        grouped[run.params.seq_id].append(run)
-
-    hv_map: dict[tuple, float] = {}
-    for group in grouped.values():
-        frontiers: dict[str, np.ndarray] = {}
-        for run in group:
-            if not run.solutions:
-                continue
-            arr = np.array(
-                [[s.cost, s.binding_score] for s in run.solutions], dtype=float
-            )
-            frontiers[_frontier_key(run)] = arr
-        if len(frontiers) < 2:
-            for run in group:
-                hv_map[run.params.run_key] = float("nan")
-            continue
-        hvs = compare_frontiers(frontiers, output_file=None)
-        for run in group:
-            hv_map[run.params.run_key] = hvs.get(_frontier_key(run), float("nan"))
-    return hv_map
 
 
 def build_design_run_summaries(
@@ -134,66 +99,17 @@ def build_design_run_summaries(
 ) -> list[DesignRunSummary]:
     assign_sweep_memberships(runs, config)
     summaries_by_key: dict[tuple, DesignRunSummary] = {}
-    hv_by_sweep: dict[str, dict[tuple, float]] = {}
-
-    for sweep in ("alpha", "k", "fsm_size"):
-        sweep_runs = [r for r in runs if sweep in getattr(r, "_sweeps", [])]
-        hv_by_sweep[sweep] = compute_hypervolumes(sweep_runs)
 
     for run in runs:
         sweeps = getattr(run, "_sweeps", sweep_membership(run.params, config))
-        hv = float("nan")
-        for sweep in sweeps:
-            sweep_hv = hv_by_sweep.get(sweep, {}).get(run.params.run_key)
-            if sweep_hv is not None and not math.isnan(sweep_hv):
-                hv = sweep_hv
-                break
         key = run.params.run_key
         if key not in summaries_by_key:
-            summaries_by_key[key] = design_run_summary(run, hv, sweeps)
+            summaries_by_key[key] = design_run_summary(run, sweeps)
         else:
             existing = summaries_by_key[key]
             merged_sweeps = sorted(set(existing.sweeps.split(",")) | set(sweeps))
-            summaries_by_key[key] = design_run_summary(
-                run, hv if not math.isnan(hv) else existing.hypervolume, merged_sweeps
-            )
+            summaries_by_key[key] = design_run_summary(run, merged_sweeps)
     return list(summaries_by_key.values())
-
-
-def _aggregate_bucket(
-    rows: list[DesignRunSummary], sweep: str
-) -> CrossSequenceAggregate | None:
-    if not rows:
-        return None
-    ref = rows[0]
-
-    def stats(values: list[float]) -> tuple[float, float]:
-        arr = np.array(values, dtype=float)
-        if len(arr) == 0:
-            return float("nan"), float("nan")
-        if len(arr) == 1:
-            return float(arr[0]), float("nan")
-        return float(np.mean(arr)), float(np.std(arr, ddof=1))
-
-    hv_mean, hv_std = stats([r.hypervolume for r in rows if r.hypervolume is not None])
-    sse_mean, sse_std = stats([r.binding_score_sse for r in rows])
-    mse_mean, mse_std = stats([r.binding_score_mse for r in rows])
-    fsm_mean, fsm_std = stats([r.fsm_binding_score_err for r in rows])
-    return CrossSequenceAggregate(
-        sweep=sweep,
-        swept_param=sweep,
-        swept_value=swept_param_value_from_summary(ref, sweep),
-        swept_label=swept_param_label_from_summary(ref, sweep),
-        hv_mean=hv_mean,
-        hv_std=hv_std,
-        sse_mean=sse_mean,
-        sse_std=sse_std,
-        mse_mean=mse_mean,
-        mse_std=mse_std,
-        fsm_err_mean=fsm_mean,
-        fsm_err_std=fsm_std,
-        n_seq=len({r.seq_id for r in rows}),
-    )
 
 
 def swept_param_value_from_summary(row: DesignRunSummary, sweep: str) -> float:
@@ -213,53 +129,6 @@ def swept_param_label_from_summary(row: DesignRunSummary, sweep: str) -> str:
         return "DB"
     fold = round(1 / (1 - row.reduce_fsm_by))
     return f"{fold}-fold ({row.fsm_size})"
-
-
-def aggregate_cross_sequence(
-    design_runs: list[DesignRunSummary], sweep: str
-) -> list[CrossSequenceAggregate]:
-    filtered = [r for r in design_runs if r.sweeps and sweep in r.sweeps.split(",")]
-    buckets: dict[str, list[DesignRunSummary]] = defaultdict(list)
-    for row in filtered:
-        label = swept_param_label_from_summary(row, sweep)
-        buckets[label].append(row)
-
-    out: list[CrossSequenceAggregate] = []
-    for _label, rows in sorted(
-        buckets.items(),
-        key=lambda item: swept_param_value_from_summary(item[1][0], sweep),
-    ):
-        agg = _aggregate_bucket(rows, sweep)
-        if agg:
-            out.append(agg)
-    return out
-
-
-def aggregate_alpha_regime(
-    design_runs: list[DesignRunSummary], regime: str
-) -> list[CrossSequenceAggregate]:
-    filtered = [
-        r
-        for r in design_runs
-        if "alpha" in r.sweeps.split(",")
-        and (("log_pos" if r.log_pos else "const") == regime)
-    ]
-    return aggregate_cross_sequence(filtered, "alpha")
-
-
-SWEEP_CORREL_METRICS = [
-    "hypervolume",
-    "binding_score_sse",
-    "binding_score_mse",
-]
-
-CORREL_METRIC_LABELS = {
-    "hypervolume": "Hypervolume",
-    "binding_score_sse": "binding_sse",
-    "binding_score_mse": "binding_mse",
-}
-
-CORREL_ROW_LABEL = "Correlates with"
 
 
 def filter_design_runs_by_sweep(

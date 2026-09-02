@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
+from math import ceil
 from pathlib import Path
 
 from pareto_designer.bio_fetcher.motif import JASPAR_DB
@@ -45,6 +46,13 @@ def fsm_size_from_id(fsm_id: str, *, db_fsm_size: int) -> tuple[int, float]:
     return 0, 0.0
 
 
+def fsm_id_for_ratio(space: str, ratio: float, db_fsm_size: int) -> tuple[str, int]:
+    if not ratio:
+        return f"{space}_db_fsm", db_fsm_size
+    n_states = ceil((1 - ratio) * db_fsm_size)
+    return f"{space}_reduced_fsm_{n_states}", n_states
+
+
 def parse_run_dir(run_dir: Path) -> RunParams:
     parts = run_dir.resolve().parts
     try:
@@ -73,6 +81,15 @@ def parse_run_dir(run_dir: Path) -> RunParams:
         reduce_fsm_by=reduce_fsm_by,
         sampler=SamplerParams(k=k, alpha=alpha, log_pos=log_pos),
     )
+
+
+def motif_id_from_run_dir(path: Path) -> str:
+    parts = Path(path).resolve().parts
+    try:
+        sampler_idx = parts.index("PowerLawSUS")
+    except ValueError as exc:
+        raise ValueError(f"cannot parse motif id from {path}") from exc
+    return parts[sampler_idx - 2]
 
 
 def parse_metadata_path(metadata_path: Path) -> RunParams:

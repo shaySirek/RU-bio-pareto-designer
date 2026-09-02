@@ -5,37 +5,16 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
-import matplotlib.patches as mpatches
 import seaborn as sns
 
 from pareto_designer.models.context import RunContext, ParetoResult
 
-_HIT_LEVELS = {
-    "0": (0, "#cbd5e0"),
-    "1": (1, "#d8b4fe"),
-    "2-5": (5, "#a855f7"),
-    "6+": (float("inf"), "#6b21a8"),
-}
-_FRONTIER_MARKERS = ["o", "^", "s", "D", "v", "P", "X", "*", "h", "p"]
 
-
-def _hit_color(n_motif_hits: int) -> str:
-    for _, (thr, col) in _HIT_LEVELS.items():
-        if n_motif_hits <= thr:
-            return col
-    return "#6b21a8"
-
-
-def _hit_legend_handles() -> list[mpatches.Patch]:
-    return [
-        mpatches.Patch(
-            facecolor=col,
-            edgecolor="black",
-            linewidth=0.5,
-            label=lbl,
-        )
-        for lbl, (_, col) in _HIT_LEVELS.items()
-    ]
+def _sorted_by_cost(
+    costs: np.ndarray, bindings: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    order = np.argsort(costs)
+    return costs[order], bindings[order]
 
 
 def _frontier_legend_handles(frontiers: dict[str, np.ndarray]) -> list[mlines.Line2D]:
@@ -43,17 +22,20 @@ def _frontier_legend_handles(frontiers: dict[str, np.ndarray]) -> list[mlines.Li
         mlines.Line2D(
             [],
             [],
-            marker=_FRONTIER_MARKERS[idx % len(_FRONTIER_MARKERS)],
-            color="black",
-            markerfacecolor="none",
-            markeredgecolor="black",
-            markeredgewidth=0.8,
-            markersize=7,
-            linestyle="None",
+            color=f"C{idx % 10}",
+            linewidth=1.5,
             label=key,
         )
         for idx, key in enumerate(frontiers.keys())
     ]
+
+
+def _filter_frontier_by_binding(
+    frontier: np.ndarray, min_binding: float = 0.0
+) -> np.ndarray:
+    if frontier.size == 0:
+        return frontier
+    return frontier[frontier[:, 1] >= min_binding]
 
 
 def render_pareto_frontiers(
@@ -62,40 +44,56 @@ def render_pareto_frontiers(
     max_cost: float,
     binding_range: tuple[float, float],
     hit_thresholds: list[float] | None = None,
+    *,
+    origin_frontiers: dict[str, np.ndarray] | None = None,
+    db_fsm_labels: set[str] | None = None,
 ):
     fig, ax = plt.subplots(figsize=(5, 4))
+    plotted_frontiers: dict[str, np.ndarray] = {}
+    plotted_costs: list[float] = []
+    plotted_bindings: list[float] = []
     for idx, (key, frontier) in enumerate(frontiers.items()):
-        marker = _FRONTIER_MARKERS[idx % len(_FRONTIER_MARKERS)]
-        costs = frontier[:, 0]
-        bindings = frontier[:, 1]
-        hits = frontier[:, 2].astype(int)
-        ax.scatter(
-            costs,
-            bindings,
-            c=[_hit_color(h) for h in hits],
-            marker=marker,
-            edgecolors="black",
-            linewidths=0.3,
-            alpha=0.8,
-            s=15,
-        )
+        color = f"C{idx % 10}"
+        filtered = _filter_frontier_by_binding(frontier)
+        if filtered.size == 0:
+            continue
+        plotted_frontiers[key] = filtered
+        costs, bindings = _sorted_by_cost(filtered[:, 0], filtered[:, 1])
+        plotted_costs.extend(costs.tolist())
+        plotted_bindings.extend(bindings.tolist())
+        ax.plot(costs, bindings, color=color, linewidth=1.5, label=key)
+
+        if origin_frontiers is not None and key in origin_frontiers:
+            if db_fsm_labels and key in db_fsm_labels:
+                continue
+            mask = frontier[:, 1] >= 0.0
+            origin = origin_frontiers[key][mask]
+            if origin.size == 0:
+                continue
+            origin_costs, origin_bindings = _sorted_by_cost(origin[:, 0], origin[:, 1])
+            plotted_costs.extend(origin_costs.tolist())
+            plotted_bindings.extend(origin_bindings.tolist())
+            ax.plot(
+                origin_costs,
+                origin_bindings,
+                color=color,
+                linewidth=1.5,
+                linestyle="--",
+            )
+
+    plot_max_cost = max(plotted_costs) if plotted_costs else max_cost
+    if plotted_bindings:
+        plot_binding_range = (min(plotted_bindings), max(plotted_bindings))
+    else:
+        plot_binding_range = binding_range
 
     _draw_hit_thresholds(ax, hit_thresholds)
-    _set_pareto_axes(ax, max_cost, binding_range, hit_thresholds)
-    ax.legend(
-        handles=_frontier_legend_handles(frontiers),
-        title="Frontiers",
-        loc="upper right",
-    )
-    fig.subplots_adjust(bottom=0.18)
-    fig.legend(
-        handles=_hit_legend_handles(),
-        title="Motif Hits",
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.23),
-        ncol=len(_HIT_LEVELS),
-        frameon=True,
-    )
+    _set_pareto_axes(ax, plot_max_cost, plot_binding_range, hit_thresholds)
+    if plotted_frontiers:
+        ax.legend(
+            handles=_frontier_legend_handles(plotted_frontiers),
+            loc="upper right",
+        )
 
     fig.savefig(
         output_file,
@@ -111,67 +109,41 @@ def render_pareto_frontier_png(
     max_cost: float,
     binding_range: tuple[float, float],
     hit_thresholds: list[float] | None = None,
+    *,
+    is_db_fsm: bool = True,
 ):
-    min_hits = min(r.n_motif_hits for r in results)
-    buckets = {key: [] for key in _HIT_LEVELS}
-    star = None
-    for r in results:
-        for lbl, (thr, col) in _HIT_LEVELS.items():
-            if r.n_motif_hits <= thr:
-                buckets[lbl].append(r)
-                if star is None and r.n_motif_hits == min_hits:
-                    star = (r, col)
-                break
+    sorted_results = sorted(results, key=lambda r: r.cost)
+    costs = [r.cost for r in sorted_results]
+    bindings = [r.binding_score for r in sorted_results]
+    origin_bindings = [r.origin_binding_score for r in sorted_results]
 
-    groups = {key: (buckets[key], _HIT_LEVELS[key][1]) for key in _HIT_LEVELS}
+    y_values = list(bindings)
+    if not is_db_fsm:
+        y_values.extend(origin_bindings)
+    plot_max_cost = max(costs) if costs else max_cost
+    if y_values:
+        plot_binding_range = (min(y_values), max(y_values))
+    else:
+        plot_binding_range = binding_range
+
     fig, ax = plt.subplots(figsize=(5, 4))
-    for label, (group_results, color) in groups.items():
-        if not group_results:
-            continue
-        costs = [r.cost for r in group_results]
-        bindings = [r.binding_score for r in group_results]
-        yerr_lower = [
-            max(0.0, r.binding_score - r.origin_binding_score) for r in group_results
-        ]
-        yerr_upper = [
-            max(0.0, r.origin_binding_score - r.binding_score) for r in group_results
-        ]
-        ax.errorbar(
+    line_color = "C0"
+    fsm_label = "Binding score" if is_db_fsm else "Reduced FSM"
+    ax.plot(costs, bindings, color=line_color, linewidth=1.5, label=fsm_label)
+
+    if not is_db_fsm:
+        ax.plot(
             costs,
-            bindings,
-            yerr=[yerr_lower, yerr_upper],
-            fmt="none",
-            ecolor="red",
-            elinewidth=0.8,
-            capsize=2,
-            alpha=0.8,
-            zorder=2,
-        )
-        ax.scatter(
-            costs,
-            bindings,
-            label=label,
-            c=color,
-            edgecolors="black",
-            linewidths=0.5,
-            alpha=0.8,
-            s=30,
-        )
-    if star:
-        ax.scatter(
-            star[0].cost,
-            star[0].binding_score,
-            color="#ffd700",
-            marker="*",
-            s=90,
-            edgecolors=star[1],
-            linewidths=1.0,
-            zorder=5,
+            origin_bindings,
+            color=line_color,
+            linewidth=1.5,
+            linestyle="--",
+            label="Origin (DB FSM)",
         )
 
     _draw_hit_thresholds(ax, hit_thresholds)
-    _set_pareto_axes(ax, max_cost, binding_range, hit_thresholds)
-    ax.legend(title="Motif Hits", loc="upper right")
+    _set_pareto_axes(ax, plot_max_cost, plot_binding_range, hit_thresholds)
+    ax.legend(loc="upper right")
 
     fig.savefig(
         ctx.output_path / "pareto_frontier.png",
@@ -187,12 +159,12 @@ def _draw_hit_thresholds(ax: Axes, hit_thresholds: list[float] | None):
     for n_hits, threshold in enumerate(hit_thresholds, start=1):
         ax.axhline(threshold, linestyle="--", color="gray", linewidth=0.8, zorder=1)
         ax.text(
-            0.01,
+            0.99,
             threshold,
             f"{n_hits} hit" if n_hits == 1 else f"{n_hits} hits",
             transform=ax.get_yaxis_transform(),
             va="bottom",
-            ha="left",
+            ha="right",
             fontsize=8,
             color="gray",
         )
@@ -329,85 +301,38 @@ def _get_cmaps(
     }
 
 
-def render_motif_cost_dist(frontiers: dict[str, np.ndarray], output_file: Path):
+def render_kmer_binding_score_mse_histogram(
+    ctx: RunContext,
+    results: list[ParetoResult],
+    fsm_mse: float | None = None,
+):
+    values = [
+        r.kmer_binding_score_mse
+        for r in results
+        if np.isfinite(r.kmer_binding_score_mse)
+    ]
+    if not values:
+        return
+
     fig, ax = plt.subplots(figsize=(5, 4))
-
-    all_hits = set()
-    for frontier in frontiers.values():
-        all_hits.update(frontier[:, 2].astype(int))
-
-    sorted_hits = np.sort(list(all_hits))
-    x_positions = np.arange(len(sorted_hits))
-    legend_elements = []
-
-    for idx, (key, frontier) in enumerate(frontiers.items()):
-        costs = frontier[:, 0]
-        motif_hits = frontier[:, 2].astype(int)
-        current_color = f"C{idx % 10}"
-
-        grouped_data = []
-        positions_to_plot = []
-
-        for pos, hit in zip(x_positions, sorted_hits):
-            mask = motif_hits == hit
-            if np.any(mask):
-                sub_costs = costs[mask]
-                offset = (idx - (len(frontiers) - 1) / 2) * 0.15
-                actual_pos = pos + offset
-
-                grouped_data.append(sub_costs)
-                positions_to_plot.append(actual_pos)
-
-                jitter = np.random.uniform(-0.02, 0.02, size=len(sub_costs))
-                ax.scatter(
-                    np.repeat(actual_pos, len(sub_costs)) + jitter,
-                    sub_costs,
-                    color=current_color,
-                    alpha=0.5,
-                    s=12,
-                    edgecolors="#2c3e50",
-                    linewidths=0.5,
-                    zorder=3,
-                )
-
-        bp = ax.boxplot(
-            grouped_data,
-            positions=positions_to_plot,
-            widths=0.12,
-            patch_artist=True,
-            manage_ticks=False,
-            showfliers=False,
+    ax.hist(values, bins=min(50, max(5, len(values))), color="steelblue", alpha=0.8)
+    mean = float(np.mean(values))
+    ax.axvline(
+        mean, linestyle="-", color="black", linewidth=1, label=f"mean={mean:.4g}"
+    )
+    if fsm_mse is not None and np.isfinite(fsm_mse):
+        ax.axvline(
+            fsm_mse,
+            linestyle="--",
+            color="black",
+            linewidth=1,
+            label=f"FSM MSE={fsm_mse:.4g}",
         )
-
-        for box in bp["boxes"]:
-            box.set_facecolor(current_color)
-            box.set_alpha(0.4)
-            box.set_edgecolor("#2c3e50")
-
-        for whisker in bp["whiskers"]:
-            whisker.set(color="#7f8c8d", linestyle="-", alpha=0.5)
-        for cap in bp["caps"]:
-            cap.set(color="#7f8c8d", alpha=0.5)
-        for median in bp["medians"]:
-            median.set(color="#2c3e50", linewidth=1.5)
-
-        legend_elements.append(
-            mpatches.Patch(
-                facecolor=current_color,
-                alpha=0.6,
-                edgecolor="#2c3e50",
-                label=key,
-            )
-        )
-
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels([str(h) for h in sorted_hits])
-    ax.set_xlabel("# Motif Hits")
-    ax.set_ylabel("Functional Cost")
-    ax.legend(handles=legend_elements, loc="upper right")
-
+    ax.set_xlabel("K-mer binding score MSE (per solution)")
+    ax.set_ylabel("Frequency")
+    ax.legend()
     fig.savefig(
-        output_file,
+        ctx.output_path / "kmer_binding_score_mse_histogram.png",
         dpi=300,
         bbox_inches="tight",
     )

@@ -7,20 +7,26 @@ from pareto_designer.bio_fetcher.motif import BindingMotif
 from pareto_designer.models.context import FSMContext
 
 
+def window_scores(
+    seq: str, score_map: dict[str, float], motif_length: int
+) -> np.ndarray:
+    valid_len = len(seq) - motif_length + 1
+    if valid_len <= 0:
+        return np.array([], dtype=float)
+    lookup = np.vectorize(lambda window: score_map.get(window, np.nan), otypes=[float])
+    windows = np.array(
+        [seq[i : i + motif_length] for i in range(valid_len)],
+        dtype=f"U{motif_length}",
+    )
+    return lookup(windows)
+
+
 def get_binding(seq: str, ctx: FSMContext, use_origin: bool = False) -> np.ndarray:
     seq_len = len(seq)
-    m_len = ctx.motif_length
-
     data = np.full(seq_len, np.nan)
-    if seq_len < m_len:
-        return data
-
     score_map = ctx.origin_binding_score_map if use_origin else ctx.binding_score_map
-    lookup_func = np.vectorize(score_map.get, otypes=[float])
-    valid_len = seq_len - m_len + 1
-    windows = [seq[i : i + m_len] for i in range(valid_len)]
-    data[:valid_len] = lookup_func(windows)
-
+    scores = window_scores(seq, score_map, ctx.motif_length)
+    data[: scores.size] = scores
     return data
 
 

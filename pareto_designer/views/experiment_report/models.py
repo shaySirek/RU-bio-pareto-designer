@@ -13,7 +13,6 @@ from pareto_designer.shared.seq_design_utils.pareto_utils import sampler_alpha_l
 class ReportGranularity(StrEnum):
     SOLUTION = "solution"
     DESIGN_RUN = "design_run"
-    CROSS_SEQUENCE = "cross_sequence"
 
 
 @dataclass(frozen=True)
@@ -69,6 +68,8 @@ class SolutionRecord:
     cost: float
     binding_score: float
     origin_binding_score: float
+    kmer_binding_score_mse: float
+    kmer_binding_score_err_std: float
     n_motif_hits: int
     n_cost_items: int
 
@@ -86,28 +87,10 @@ class DesignRunSummary:
     sweeps: str
     n_solutions: int
     runtime_s: float
-    binding_score_sse: float
-    binding_score_mse: float
-    binding_score_rmse: float
+    kmer_binding_score_mse_mean: float
+    kmer_binding_score_mse_solution_std: float
+    db_fsm_size: int
     fsm_binding_score_err: float
-    hypervolume: float | None = None
-
-
-@dataclass
-class CrossSequenceAggregate:
-    sweep: str
-    swept_param: str
-    swept_value: float
-    swept_label: str
-    hv_mean: float
-    hv_std: float
-    sse_mean: float
-    sse_std: float
-    mse_mean: float
-    mse_std: float
-    fsm_err_mean: float
-    fsm_err_std: float
-    n_seq: int
 
 
 @dataclass(frozen=True)
