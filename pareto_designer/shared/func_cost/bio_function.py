@@ -31,6 +31,18 @@ class BioCostFunction(ScoreFunction):
     def codon_usage_costs(self) -> dict[str, float]:
         return self._codon_usage_costs
 
+    @property
+    def alpha(self) -> float:
+        return self._alpha
+
+    @property
+    def beta(self) -> float:
+        return self._beta
+
+    @property
+    def w(self) -> float:
+        return self._w
+
     def cost(self, i: int, v: str, sigma: str) -> float:
         codon_pos = self._coding_positions[i]
 

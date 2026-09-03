@@ -114,7 +114,6 @@ class SequenceDesigner:
             n_solutions = len(solutions)
             logger.info(f"Found {n_solutions} Pareto-optimal sequences in {runtime}")
             ctx.run_ctx.runtime = runtime
-            ctx.run_ctx.runtime_seconds = duration
             ctx.run_ctx.n_solutions = n_solutions
             exporter.save(solutions)
 

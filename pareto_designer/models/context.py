@@ -57,7 +57,6 @@ class RunContext:
     sampler: SamplingMethod
     n_solutions: int = 0
     runtime: str = ""
-    runtime_seconds: float = 0.0
     results_root: Path = Path("designer_results")
 
     @property
@@ -92,6 +91,7 @@ class ParetoResult:
     sequence: str
     n_cost_items: int
     motif_hits: list[tuple[int, int]]
+    n_nonsyn: int = 0
     kmer_binding_score_mse: float = float("nan")
     kmer_binding_score_err_std: float = float("nan")
 

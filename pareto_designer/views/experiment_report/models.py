@@ -71,7 +71,9 @@ class SolutionRecord:
     kmer_binding_score_mse: float
     kmer_binding_score_err_std: float
     n_motif_hits: int
+    n_nonsyn: int
     n_cost_items: int
+    quality_region: str
 
 
 @dataclass
@@ -91,6 +93,24 @@ class DesignRunSummary:
     kmer_binding_score_mse_solution_std: float
     db_fsm_size: int
     fsm_binding_score_err: float
+    n_with_hits: int
+    n_roi: int
+    n_plateau: int
+    n_with_nonsyn: int
+    roi_cost_min: float
+    roi_cost_p25: float
+    roi_cost_p50: float
+    roi_cost_p75: float
+    roi_cost_max: float
+    roi_cost_mean: float
+    roi_cost_std: float
+    roi_binding_min: float
+    roi_binding_p25: float
+    roi_binding_p50: float
+    roi_binding_p75: float
+    roi_binding_max: float
+    roi_binding_mean: float
+    roi_binding_std: float
 
 
 @dataclass(frozen=True)

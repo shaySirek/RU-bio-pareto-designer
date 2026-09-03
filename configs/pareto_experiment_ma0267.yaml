@@ -13,10 +13,15 @@ sweeps:
   alpha:
     fixed: { k: 100, reduce_fsm_by: 0.875 }
     vary:
-      sampler_alpha: [0.0, 0.5, 1.0, 2.0, 0.5_log_pos, 1.0_log_pos, 2.0_log_pos]
+      sampler_alpha: [0.0, 0.5, 1.0, 2.0, 3.0, 0.5_log_pos, 1.0_log_pos, 2.0_log_pos]
     comparison_groups:
-      const: [0.0, 0.5, 1.0, 2.0]
-      log_pos: [1.0, 2.0, 1.0_log_pos, 2.0_log_pos]
+      const_low: [0.0, 0.5, 1.0]
+      const_high: [2.0, 3.0]
+      log_pos0.5_vs_const: [0.5_log_pos, 0.5, 1.0]
+      log_pos0.5_vs_const_high: [0.5_log_pos, 2.0]
+      log_pos1_vs_const: [1.0_log_pos, 1.0, 2.0]
+      log_pos1_vs_const_high: [1.0_log_pos, 3.0]
+      log_pos2_vs_const: [2.0_log_pos, 2.0, 3.0]
   k:
     fixed: { reduce_fsm_by: 0.875, sampler_alpha: 1.0_log_pos }
     vary:

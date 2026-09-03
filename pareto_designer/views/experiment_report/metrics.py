@@ -4,11 +4,16 @@ from pareto_designer.shared.seq_design_utils.binding_metrics import (
     fsm_binding_score_mse,
     run_kmer_binding_score_mse_summary,
 )
+from pareto_designer.views.experiment_report.config import nonsyn_w
 from pareto_designer.views.experiment_report.models import (
     DesignRunSummary,
     ExperimentConfig,
     LoadedRun,
     SolutionRecord,
+)
+from pareto_designer.shared.seq_design_utils.solution_quality import (
+    classify_run_solutions,
+    roi_distributions,
 )
 from pareto_designer.views.experiment_report.sweeps import (
     assign_sweep_memberships,
@@ -17,11 +22,12 @@ from pareto_designer.views.experiment_report.sweeps import (
 
 
 def solution_records(
-    run: LoadedRun, sweeps: list[str] | None = None
+    run: LoadedRun, sweeps: list[str] | None = None, *, w: float | None = None
 ) -> list[SolutionRecord]:
     sweeps_str = ",".join(sweeps or [])
     p = run.params
     s = p.sampler
+    _, regions = classify_run_solutions(run.solutions, w=w)
     return [
         SolutionRecord(
             seq_id=p.seq_id,
@@ -40,15 +46,15 @@ def solution_records(
             kmer_binding_score_mse=r.kmer_binding_score_mse,
             kmer_binding_score_err_std=r.kmer_binding_score_err_std,
             n_motif_hits=r.n_motif_hits,
+            n_nonsyn=r.n_nonsyn,
             n_cost_items=r.n_cost_items,
+            quality_region=regions[r.id].value,
         )
         for r in run.solutions
     ]
 
 
 def parse_runtime_seconds(metadata: dict) -> float:
-    if "runtime_seconds" in metadata:
-        return float(metadata["runtime_seconds"])
     runtime = metadata.get("runtime", "")
     if not runtime or runtime == "-":
         return float("nan")
@@ -66,11 +72,13 @@ def parse_runtime_seconds(metadata: dict) -> float:
 
 
 def design_run_summary(
-    run: LoadedRun, sweeps: list[str] | None = None
+    run: LoadedRun, sweeps: list[str] | None = None, *, w: float | None = None
 ) -> DesignRunSummary:
     p = run.params
     s = p.sampler
     kmer_mse = run_kmer_binding_score_mse_summary(run.solutions)
+    quality, regions = classify_run_solutions(run.solutions, w=w)
+    roi_cost, roi_binding = roi_distributions(run.solutions, regions)
     meta = run.metadata
     return DesignRunSummary(
         seq_id=p.seq_id,
@@ -91,6 +99,24 @@ def design_run_summary(
             float(meta.get("fsm_binding_score_err", float("nan"))),
             int(meta.get("db_fsm_size", 0) or 0),
         ),
+        n_with_hits=quality.n_with_hits,
+        n_roi=quality.n_roi,
+        n_plateau=quality.n_plateau,
+        n_with_nonsyn=quality.n_nonsyn,
+        roi_cost_min=roi_cost.min,
+        roi_cost_p25=roi_cost.p25,
+        roi_cost_p50=roi_cost.p50,
+        roi_cost_p75=roi_cost.p75,
+        roi_cost_max=roi_cost.max,
+        roi_cost_mean=roi_cost.mean,
+        roi_cost_std=roi_cost.std,
+        roi_binding_min=roi_binding.min,
+        roi_binding_p25=roi_binding.p25,
+        roi_binding_p50=roi_binding.p50,
+        roi_binding_p75=roi_binding.p75,
+        roi_binding_max=roi_binding.max,
+        roi_binding_mean=roi_binding.mean,
+        roi_binding_std=roi_binding.std,
     )
 
 
@@ -99,16 +125,17 @@ def build_design_run_summaries(
 ) -> list[DesignRunSummary]:
     assign_sweep_memberships(runs, config)
     summaries_by_key: dict[tuple, DesignRunSummary] = {}
+    w = nonsyn_w(config)
 
     for run in runs:
         sweeps = getattr(run, "_sweeps", sweep_membership(run.params, config))
         key = run.params.run_key
         if key not in summaries_by_key:
-            summaries_by_key[key] = design_run_summary(run, sweeps)
+            summaries_by_key[key] = design_run_summary(run, sweeps, w=w)
         else:
             existing = summaries_by_key[key]
             merged_sweeps = sorted(set(existing.sweeps.split(",")) | set(sweeps))
-            summaries_by_key[key] = design_run_summary(run, merged_sweeps)
+            summaries_by_key[key] = design_run_summary(run, merged_sweeps, w=w)
     return list(summaries_by_key.values())
 
 

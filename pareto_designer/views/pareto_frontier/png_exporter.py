@@ -8,6 +8,30 @@ import matplotlib.lines as mlines
 import seaborn as sns
 
 from pareto_designer.models.context import RunContext, ParetoResult
+from pareto_designer.shared.seq_design_utils.solution_quality import SolutionRegion
+from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+    overlay_run_quality,
+    region_legend_handle,
+    regions_for_results,
+    scatter_classified_points,
+)
+
+# Line colors chosen to avoid overlap with solution_quality REGION_COLORS.
+_FRONTIER_LINE_COLORS = [
+    "#333333",
+    "#1f77b4",
+    "#17becf",
+    "#8c564b",
+    "#7f7f7f",
+    "#005f8a",
+    "#aec7e8",
+    "#4a4a4a",
+]
+_FRONTIER_LINE_COLOR = "#333333"
+
+
+def _frontier_line_color(index: int) -> str:
+    return _FRONTIER_LINE_COLORS[index % len(_FRONTIER_LINE_COLORS)]
 
 
 def _sorted_by_cost(
@@ -17,16 +41,18 @@ def _sorted_by_cost(
     return costs[order], bindings[order]
 
 
-def _frontier_legend_handles(frontiers: dict[str, np.ndarray]) -> list[mlines.Line2D]:
+def _frontier_legend_handles(
+    frontiers: dict[str, np.ndarray], line_colors: dict[str, str]
+) -> list[mlines.Line2D]:
     return [
         mlines.Line2D(
             [],
             [],
-            color=f"C{idx % 10}",
+            color=line_colors[key],
             linewidth=1.5,
             label=key,
         )
-        for idx, key in enumerate(frontiers.keys())
+        for key in frontiers.keys()
     ]
 
 
@@ -47,21 +73,32 @@ def render_pareto_frontiers(
     *,
     origin_frontiers: dict[str, np.ndarray] | None = None,
     db_fsm_labels: set[str] | None = None,
+    results_by_label: dict[str, list[ParetoResult]] | None = None,
+    nonsyn_w: float | None = None,
 ):
     fig, ax = plt.subplots(figsize=(5, 4))
     plotted_frontiers: dict[str, np.ndarray] = {}
+    line_colors: dict[str, str] = {}
     plotted_costs: list[float] = []
     plotted_bindings: list[float] = []
+    regions_in_legend: set[SolutionRegion] = set()
     for idx, (key, frontier) in enumerate(frontiers.items()):
-        color = f"C{idx % 10}"
+        color = _frontier_line_color(idx)
         filtered = _filter_frontier_by_binding(frontier)
         if filtered.size == 0:
             continue
         plotted_frontiers[key] = filtered
+        line_colors[key] = color
         costs, bindings = _sorted_by_cost(filtered[:, 0], filtered[:, 1])
         plotted_costs.extend(costs.tolist())
         plotted_bindings.extend(bindings.tolist())
-        ax.plot(costs, bindings, color=color, linewidth=1.5, label=key)
+        ax.plot(costs, bindings, color=color, linewidth=1.5, label=key, zorder=1)
+
+        if results_by_label and key in results_by_label:
+            run_results = results_by_label[key]
+            regions = regions_for_results(run_results, nonsyn_w=nonsyn_w)
+            for region in scatter_classified_points(ax, run_results, regions):
+                regions_in_legend.add(region)
 
         if origin_frontiers is not None and key in origin_frontiers:
             if db_fsm_labels and key in db_fsm_labels:
@@ -79,6 +116,7 @@ def render_pareto_frontiers(
                 color=color,
                 linewidth=1.5,
                 linestyle="--",
+                zorder=1,
             )
 
     plot_max_cost = max(plotted_costs) if plotted_costs else max_cost
@@ -90,10 +128,13 @@ def render_pareto_frontiers(
     _draw_hit_thresholds(ax, hit_thresholds)
     _set_pareto_axes(ax, plot_max_cost, plot_binding_range, hit_thresholds)
     if plotted_frontiers:
-        ax.legend(
-            handles=_frontier_legend_handles(plotted_frontiers),
-            loc="upper right",
+        legend_handles = _frontier_legend_handles(plotted_frontiers, line_colors)
+        legend_handles.extend(
+            region_legend_handle(region)
+            for region in SolutionRegion
+            if region in regions_in_legend
         )
+        ax.legend(handles=legend_handles, loc="upper right")
 
     fig.savefig(
         output_file,
@@ -111,6 +152,7 @@ def render_pareto_frontier_png(
     hit_thresholds: list[float] | None = None,
     *,
     is_db_fsm: bool = True,
+    nonsyn_w: float | None = None,
 ):
     sorted_results = sorted(results, key=lambda r: r.cost)
     costs = [r.cost for r in sorted_results]
@@ -127,9 +169,9 @@ def render_pareto_frontier_png(
         plot_binding_range = binding_range
 
     fig, ax = plt.subplots(figsize=(5, 4))
-    line_color = "C0"
+    line_color = _FRONTIER_LINE_COLOR
     fsm_label = "Binding score" if is_db_fsm else "Reduced FSM"
-    ax.plot(costs, bindings, color=line_color, linewidth=1.5, label=fsm_label)
+    ax.plot(costs, bindings, color=line_color, linewidth=1.5, label=fsm_label, zorder=1)
 
     if not is_db_fsm:
         ax.plot(
@@ -139,11 +181,32 @@ def render_pareto_frontier_png(
             linewidth=1.5,
             linestyle="--",
             label="Origin (DB FSM)",
+            zorder=1,
         )
+
+    w = nonsyn_w
+    if w is None:
+        w = ctx.cost_params.get("w")
+    region_point_handles = overlay_run_quality(ax, sorted_results, nonsyn_w=w)
 
     _draw_hit_thresholds(ax, hit_thresholds)
     _set_pareto_axes(ax, plot_max_cost, plot_binding_range, hit_thresholds)
-    ax.legend(loc="upper right")
+    legend_handles = [
+        mlines.Line2D([], [], color=line_color, linewidth=1.5, label=fsm_label)
+    ]
+    if not is_db_fsm:
+        legend_handles.append(
+            mlines.Line2D(
+                [],
+                [],
+                color=line_color,
+                linewidth=1.5,
+                linestyle="--",
+                label="Origin (DB FSM)",
+            )
+        )
+    legend_handles.extend(region_point_handles)
+    ax.legend(handles=legend_handles, loc="upper right")
 
     fig.savefig(
         ctx.output_path / "pareto_frontier.png",
@@ -159,12 +222,12 @@ def _draw_hit_thresholds(ax: Axes, hit_thresholds: list[float] | None):
     for n_hits, threshold in enumerate(hit_thresholds, start=1):
         ax.axhline(threshold, linestyle="--", color="gray", linewidth=0.8, zorder=1)
         ax.text(
-            0.99,
+            0.5,
             threshold,
             f"{n_hits} hit" if n_hits == 1 else f"{n_hits} hits",
             transform=ax.get_yaxis_transform(),
             va="bottom",
-            ha="right",
+            ha="center",
             fontsize=8,
             color="gray",
         )

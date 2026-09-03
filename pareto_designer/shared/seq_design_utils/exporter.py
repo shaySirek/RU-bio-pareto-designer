@@ -109,6 +109,8 @@ class ParetoExporter:
         functional_cost = max(0.0, -f_score)
         costs = np.array(self._score_function.get_costs(sequence), dtype=float)
         n_cost_items = int(np.count_nonzero(costs > 0))
+        w = getattr(self._score_function, "w", float("inf"))
+        n_nonsyn = int(np.sum(costs >= w)) if np.isfinite(w) else 0
         binding = get_binding(sequence, self._fsm_ctx)
         positional_objectives = np.column_stack((costs, binding))
         np.save(sol_positional_objectives_file, positional_objectives)
@@ -139,6 +141,7 @@ class ParetoExporter:
             max_positional_binding=np.nanmax(binding),
             sequence=sequence,
             n_cost_items=n_cost_items,
+            n_nonsyn=n_nonsyn,
             motif_hits=motif_hits,
             kmer_binding_score_mse=float(kmer_mse.mse),
             kmer_binding_score_err_std=float(kmer_mse.err_std),
@@ -148,7 +151,6 @@ class ParetoExporter:
         data = {
             "metadata": {
                 "runtime": self._run_ctx.runtime,
-                "runtime_seconds": self._run_ctx.runtime_seconds,
                 "n_solutions": len(self._results),
                 "target_id": self._run_ctx.target_sequence_id,
                 "fsm_binding_score_err": self._fsm_ctx.fsm_binding_score_err,
@@ -167,7 +169,6 @@ class ParetoExporter:
 
         meta = data.get("metadata", {})
         self._run_ctx.runtime = meta.get("runtime", "-")
-        self._run_ctx.runtime_seconds = float(meta.get("runtime_seconds", 0.0))
         if "fsm_binding_score_err" in meta:
             self._fsm_ctx.fsm_binding_score_err = meta["fsm_binding_score_err"]
         rows = []
@@ -279,6 +280,7 @@ class ParetoExporter:
                     binding_range,
                     hit_thresholds,
                     is_db_fsm=self._fsm_ctx.reduce_fsm_by == 0,
+                    nonsyn_w=getattr(self._score_function, "w", None),
                 ),
                 executor.submit(
                     render_pareto_frontier_html, self._run_ctx, self._results

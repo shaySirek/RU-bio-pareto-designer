@@ -302,6 +302,13 @@ def report_output_path(config: ExperimentConfig) -> Path:
     return root / "pareto_experiment_report.xlsx"
 
 
+def nonsyn_w(config: ExperimentConfig | None) -> float | None:
+    if config is None:
+        return None
+    w = config.fixed.get("cost_params", {}).get("w")
+    return float(w) if w is not None else None
+
+
 ExperimentConfig.report_output_path = report_output_path  # type: ignore[method-assign]
 
 

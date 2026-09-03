@@ -9,6 +9,7 @@ import pytest
 from pareto_designer.models.context import ParetoResult
 from pareto_designer.views.experiment_report.config import (
     ConfigError,
+    alpha_comparison_groups,
     effective_grid,
     expected_runs,
     load_experiment_config,
@@ -77,7 +78,7 @@ def _make_run(
         params=params,
         metadata={
             "n_solutions": len(solutions),
-            "runtime_seconds": 1.0,
+            "runtime": "0:00:01",
             "fsm_binding_score_err": 0.1,
             "db_fsm_size": 8192,
         },
@@ -95,8 +96,22 @@ def test_load_valid_config():
             effective_grid(config, name) for name in ("alpha", "k", "fsm_size")
         )
     )
-    assert n_cells == 14
+    assert n_cells == 15
     assert seq_files(config)
+
+
+def test_alpha_comparison_groups():
+    config = load_experiment_config(CONFIG_PATH)
+    groups = dict(alpha_comparison_groups(config))
+    assert groups["const_low"] == ("0.0", "0.5", "1.0")
+    assert groups["const_high"] == ("2.0", "3.0")
+    assert groups["log_pos0.5_vs_const"] == ("0.5_log_pos", "0.5", "1.0")
+    assert groups["log_pos1_vs_const"] == ("1.0_log_pos", "1.0", "2.0")
+    assert groups["log_pos2_vs_const"] == ("2.0_log_pos", "2.0", "3.0")
+    alpha_grid = effective_grid(config, "alpha")
+    assert len(alpha_grid.sampler_alpha) == 8
+    assert "3.0" in alpha_grid.sampler_alpha
+    assert "0.5_log_pos" in alpha_grid.sampler_alpha
 
 
 def test_reject_unknown_top_level_key(tmp_path: Path):
@@ -301,10 +316,26 @@ def test_expected_runs_derives_fsm_ids_without_builder():
         return_value=16384,
     ):
         runs = expected_runs(config)
-    assert len(runs) == 14 * len(seq_files(config))
+    assert len(runs) == 15 * len(seq_files(config))
     assert {r.params.fsm_id for r in runs if r.sweep == "fsm_size"} == {
         "logexp_db_fsm",
         "logexp_reduced_fsm_4096",
         "logexp_reduced_fsm_2048",
         "logexp_reduced_fsm_1024",
     }
+
+
+def test_alpha_roi_boxplot_renders_png(tmp_path):
+    from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+        alpha_roi_boxplot_filename,
+        render_alpha_roi_boxplot,
+    )
+
+    roi_by_alpha = {
+        "1.0": [(10.0, 5.0), (20.0, 4.0), (30.0, 3.5)],
+        "2.0": [(12.0, 4.8), (22.0, 3.9)],
+    }
+    out = tmp_path / alpha_roi_boxplot_filename(100)
+    path = render_alpha_roi_boxplot("seq1", roi_by_alpha, out)
+    assert path == out
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

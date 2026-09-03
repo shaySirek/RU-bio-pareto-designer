@@ -7,11 +7,15 @@ from loguru import logger
 import numpy as np
 
 from pareto_designer.shared.binding_utils import motif_hit_binding_thresholds
+from pareto_designer.models.context import ParetoResult
 from pareto_designer.shared.csv_writer import write_results_stream
 from pareto_designer.shared.seq_design_utils.binding_metrics import (
     run_kmer_binding_score_mse_summary,
 )
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
+from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+    export_alpha_sweep_roi_boxplot,
+)
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.views.pareto_frontier.png_exporter import (
     render_pareto_frontiers,
@@ -82,6 +86,30 @@ def _ordered_labeled_frontiers_for_alphas(
     return grouped
 
 
+def _nonsyn_w_from_exporter(exporter: ParetoExporter) -> float | None:
+    w = getattr(exporter.ctx.score_function, "w", None)
+    if w is None:
+        w = exporter.ctx.run_ctx.cost_params.get("w")
+    if w is None or not np.isfinite(w):
+        return None
+    return float(w)
+
+
+def _labeled_results(
+    exporters: dict[str, ParetoExporter],
+    labels: dict[str, str],
+    variant_names: dict[str, np.ndarray] | None = None,
+) -> dict[str, list[ParetoResult]]:
+    out: dict[str, list[ParetoResult]] = {}
+    for name, exporter in exporters.items():
+        if variant_names is not None and name not in variant_names:
+            continue
+        if not exporter._results:
+            continue
+        out[labels[name]] = exporter._results
+    return out
+
+
 def _render_comparison_frontiers(
     labeled_frontiers: dict[str, np.ndarray],
     comparison_png: Path,
@@ -91,6 +119,8 @@ def _render_comparison_frontiers(
     *,
     origin_frontiers: dict[str, np.ndarray] | None = None,
     db_fsm_labels: set[str] | None = None,
+    results_by_label: dict[str, list[ParetoResult]] | None = None,
+    nonsyn_w: float | None = None,
 ) -> None:
     labeled_origin = None
     if origin_frontiers is not None:
@@ -107,6 +137,8 @@ def _render_comparison_frontiers(
         hit_thresholds,
         origin_frontiers=labeled_origin,
         db_fsm_labels=db_fsm_labels,
+        results_by_label=results_by_label,
+        nonsyn_w=nonsyn_w,
     )
 
 
@@ -185,6 +217,8 @@ def render_and_compare(
     write_comparison = not _is_design_run_dir(comparison_dir)
     labels = _display_labels(exporters)
     labeled_frontiers = {labels[name]: frontier for name, frontier in frontiers.items()}
+    nonsyn_w = _nonsyn_w_from_exporter(first_exporter)
+    labeled_results = _labeled_results(exporters, labels, frontiers)
 
     origin_frontiers: dict[str, np.ndarray] | None = None
     db_fsm_labels: set[str] | None = None
@@ -208,6 +242,11 @@ def render_and_compare(
                 )
                 if not group_frontiers:
                     continue
+                group_results = {
+                    label: labeled_results[label]
+                    for label in group_frontiers
+                    if label in labeled_results
+                }
                 comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
                     sweep_name, sweep_grid, alpha_group=group_name
                 )
@@ -217,6 +256,8 @@ def render_and_compare(
                     max_cost,
                     binding_range,
                     hit_thresholds,
+                    results_by_label=group_results,
+                    nonsyn_w=nonsyn_w,
                 )
         else:
             if sweep_name is not None and sweep_grid is not None:
@@ -233,6 +274,18 @@ def render_and_compare(
                 hit_thresholds,
                 origin_frontiers=origin_frontiers,
                 db_fsm_labels=db_fsm_labels,
+                results_by_label=(
+                    labeled_results if sweep_name != "fsm_size" else None
+                ),
+                nonsyn_w=nonsyn_w,
+            )
+
+        if sweep_name == "alpha" and sweep_grid is not None:
+            export_alpha_sweep_roi_boxplot(
+                exporters,
+                comparison_dir,
+                k=sweep_grid.k_values[0],
+                nonsyn_w=nonsyn_w,
             )
 
     rows = list(_comparison_rows(exporters))

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-from openpyxl.styles import Border, Font, Side
+from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.worksheet.worksheet import Worksheet
 
 from pareto_designer.views.experiment_report.metrics import (
@@ -15,6 +15,7 @@ from pareto_designer.views.experiment_report.excel_schema import (
     OVERVIEW_CHECKLIST_TABLE,
     SOLUTION_TABLE,
     ExcelTableSpec,
+    GroupedExcelTableSpec,
 )
 from pareto_designer.views.experiment_report.models import (
     DesignRunSummary,
@@ -44,9 +45,11 @@ def write_data_block(
     headers: Sequence[str],
     rows: Iterable[Sequence[Any]],
     *,
+    keys: Sequence[str] | None = None,
     seq_border: bool = False,
 ) -> RangeRef:
-    col_map = {h: col + idx for idx, h in enumerate(headers)}
+    col_keys = keys if keys is not None else headers
+    col_map = {key: col + idx for idx, key in enumerate(col_keys)}
     n_cols = len(headers)
     for idx, header in enumerate(headers):
         ws.cell(row=row, column=col + idx, value=header).font = Font(bold=True)
@@ -76,21 +79,48 @@ def _excel_cell_value(value: Any) -> Any:
     return value
 
 
+def _write_column_groups(
+    ws: Worksheet,
+    row: int,
+    col: int,
+    spec: GroupedExcelTableSpec,
+) -> None:
+    col_idx = col + len(spec.leading)
+    for group in spec.groups:
+        start_col = col_idx
+        col_idx += len(group.columns)
+        cell = ws.cell(row=row, column=start_col, value=group.title)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+        if len(group.columns) > 1:
+            ws.merge_cells(
+                start_row=row,
+                start_column=start_col,
+                end_row=row,
+                end_column=col_idx - 1,
+            )
+
+
 def write_table(
     ws: Worksheet,
     row: int,
     col: int,
-    spec: ExcelTableSpec,
+    spec: ExcelTableSpec | GroupedExcelTableSpec,
     records: Iterable[Any],
     *,
     seq_border: bool = False,
 ) -> RangeRef:
+    header_row = row
+    if isinstance(spec, GroupedExcelTableSpec):
+        _write_column_groups(ws, row, col, spec)
+        header_row = row + 1
     return write_data_block(
         ws,
-        row,
+        header_row,
         col,
         spec.headers,
         spec.rows(records),
+        keys=spec.keys,
         seq_border=seq_border,
     )
 

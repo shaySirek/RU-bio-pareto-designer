@@ -23,9 +23,7 @@ from pareto_designer.views.experiment_report.config import (
     alpha_comparison_groups,
     seq_files,
 )
-from pareto_designer.views.experiment_report.xlsx_exporter import (
-    ExperimentReportExporter,
-)
+from pareto_designer.views.experiment_report import ExperimentReportExporter
 
 SWEEP_NAMES = ("alpha", "k", "fsm_size")
 
