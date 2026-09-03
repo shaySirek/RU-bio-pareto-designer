@@ -9,9 +9,22 @@ from pareto_designer.algorithms.seq_design.dp_matrix import (
     MAX_FILE_SIZE,
     get_flush_every,
 )
-from pareto_designer.shared.func_cost.exact_match_function import ExactMatchCostFunction
 
 MockFSM = namedtuple("MockFSM", ["Sigma", "V", "v_init"])
+
+
+class _BinaryMatchCost:
+    def __init__(self, target_sequence: str):
+        self._target_sequence = target_sequence
+
+    def cost(self, i: int, v: str, sigma: str) -> float:
+        return 0.0 if self._target_sequence[i] == sigma else 1.0
+
+    def __call__(self, i: int, v: str, sigma: str) -> float:
+        return -self.cost(i, v, sigma)
+
+    def get_costs(self, sequence: str) -> list[float]:
+        return [self.cost(i, "", sigma) for i, sigma in enumerate(sequence)]
 
 
 @pytest.fixture
@@ -20,8 +33,8 @@ def target_seq() -> str:
 
 
 @pytest.fixture
-def exact_match_fn(target_seq: str) -> ExactMatchCostFunction:
-    return ExactMatchCostFunction(target_sequence=target_seq)
+def match_cost_fn(target_seq: str) -> _BinaryMatchCost:
+    return _BinaryMatchCost(target_sequence=target_seq)
 
 
 @pytest.fixture
@@ -47,7 +60,7 @@ def test_get_flush_every_at_least_one():
 
 
 def test_reconstructed_sequence_costs(
-    test_env: DP_Matrix, exact_match_fn: ExactMatchCostFunction
+    test_env: DP_Matrix, match_cost_fn: _BinaryMatchCost
 ):
     """
     Verifies that get_costs correctly identifies position-wise costs
@@ -65,14 +78,14 @@ def test_reconstructed_sequence_costs(
         char = test_seq[i - 1]
         u_prev = q0 if i == 1 else q1
 
-        current_f += exact_match_fn(i - 1, u_prev, char)
+        current_f += match_cost_fn(i - 1, u_prev, char)
         dp.update(q1, [(current_f, 0.0)], [[((u_prev, char), 0)]])
         dp.end_row(i)
 
     po_set = dp.reconstruct_po_set()
     reconstructed_seq, _ = list(po_set)[0]
 
-    costs = exact_match_fn.get_costs(reconstructed_seq)
+    costs = match_cost_fn.get_costs(reconstructed_seq)
 
     assert reconstructed_seq == test_seq
     assert len(costs) == dp.n
@@ -80,8 +93,8 @@ def test_reconstructed_sequence_costs(
     assert sum(costs) == 2.0
 
 
-def test_exact_match_po_integration(
-    test_env: DP_Matrix, exact_match_fn: ExactMatchCostFunction
+def test_binary_match_po_integration(
+    test_env: DP_Matrix, match_cost_fn: _BinaryMatchCost
 ):
     """
     Tests DP updates across all rows where two distinct paths are Pareto-optimal.
@@ -94,18 +107,18 @@ def test_exact_match_po_integration(
         idx = i - 1
 
         if i == 1:
-            f_a = 0.0 + exact_match_fn(idx, q0, "A")
+            f_a = 0.0 + match_cost_fn(idx, q0, "A")
             dp.update(q1, [(f_a, 2.0)], [[((q0, "A"), 0)]])
-            f_g = 0.0 + exact_match_fn(idx, q0, "G")
+            f_g = 0.0 + match_cost_fn(idx, q0, "G")
             dp.update(q2, [(f_g, 0.0)], [[((q0, "G"), 0)]])
         else:
             prev_q1 = dp.get(q1)[0]
-            f_a = prev_q1["f"] + exact_match_fn(idx, q1, "A")
+            f_a = prev_q1["f"] + match_cost_fn(idx, q1, "A")
             b_a = prev_q1["b"] + 2.0
             dp.update(q1, [(f_a, b_a)], [[((q1, "A"), 0)]])
 
             prev_q2 = dp.get(q2)[0]
-            f_g = prev_q2["f"] + exact_match_fn(idx, q2, "G")
+            f_g = prev_q2["f"] + match_cost_fn(idx, q2, "G")
             b_g = prev_q2["b"] + 0.0
             dp.update(q2, [(f_g, b_g)], [[((q2, "G"), 0)]])
 

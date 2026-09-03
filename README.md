@@ -205,7 +205,7 @@ poetry run design-seq \
 Each run is written under:
 
 ```
-designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/PowerLawSUS/<sampler_params>/
+designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/<sampler_params>/
 ```
 
 Comparison files for one CLI invocation are written at the common parent of those run directories (never inside an individual run folder):

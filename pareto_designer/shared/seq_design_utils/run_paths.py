@@ -5,15 +5,17 @@ from pathlib import Path
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 
 
-def norm_cost_param_key(key: str) -> str:
-    return key.split(" ")[0].lower().replace("-", "_")
+def _short_cost_value(value: float) -> str:
+    text = f"{value:g}"
+    if "." not in text:
+        text = f"{text}.0"
+    return text
 
 
 def format_cost_params_str(cost_params: dict[str, float]) -> str:
-    return "__".join(
-        f"{norm_cost_param_key(k)}_{p:.2f}"
-        for k, p in cost_params.items()
-        if isinstance(p, float)
+    return "_".join(
+        f"{key}{_short_cost_value(float(cost_params[key]))}"
+        for key in ("alpha", "beta", "w")
     )
 
 
@@ -31,7 +33,6 @@ def run_output_path(
         / cost_params_str
         / motif_id
         / fsm_id
-        / type(sampler).__name__
         / sampler.params
     )
 

@@ -53,14 +53,19 @@ def fsm_id_for_ratio(space: str, ratio: float, db_fsm_size: int) -> tuple[str, i
     return f"{space}_reduced_fsm_{n_states}", n_states
 
 
-def parse_run_dir(run_dir: Path) -> RunParams:
-    parts = run_dir.resolve().parts
-    try:
-        sampler_idx = parts.index("PowerLawSUS")
-    except ValueError as exc:
-        raise ValueError(f"not a design run directory: {run_dir}") from exc
+def _run_dir_parts(path: Path) -> tuple[str, ...]:
+    parts = path.resolve().parts
+    if parts and parts[-1] == "results_metadata.json":
+        return parts[:-1]
+    return parts
 
-    sampler_dir = parts[sampler_idx + 1]
+
+def parse_run_dir(run_dir: Path) -> RunParams:
+    parts = _run_dir_parts(run_dir)
+    if len(parts) < 5:
+        raise ValueError(f"not a design run directory: {run_dir}")
+
+    sampler_dir = parts[-1]
     match = SAMPLER_DIR_RE.match(sampler_dir)
     if not match:
         raise ValueError(f"cannot parse sampler directory: {sampler_dir}")
@@ -68,9 +73,9 @@ def parse_run_dir(run_dir: Path) -> RunParams:
     k = int(match.group("k"))
     alpha = float(match.group("alpha"))
     log_pos = match.group("log_pos") is not None
-    fsm_id = parts[sampler_idx - 1]
-    motif_id = parts[sampler_idx - 2]
-    seq_id = parts[sampler_idx - 4]
+    fsm_id = parts[-2]
+    motif_id = parts[-3]
+    seq_id = parts[-5]
 
     db_size = db_fsm_state_count_for_motif(motif_id)
     fsm_size, reduce_fsm_by = fsm_size_from_id(fsm_id, db_fsm_size=db_size)
@@ -84,12 +89,10 @@ def parse_run_dir(run_dir: Path) -> RunParams:
 
 
 def motif_id_from_run_dir(path: Path) -> str:
-    parts = Path(path).resolve().parts
-    try:
-        sampler_idx = parts.index("PowerLawSUS")
-    except ValueError as exc:
-        raise ValueError(f"cannot parse motif id from {path}") from exc
-    return parts[sampler_idx - 2]
+    parts = _run_dir_parts(path)
+    if len(parts) < 3:
+        raise ValueError(f"cannot parse motif id from {path}")
+    return parts[-3]
 
 
 def parse_metadata_path(metadata_path: Path) -> RunParams:

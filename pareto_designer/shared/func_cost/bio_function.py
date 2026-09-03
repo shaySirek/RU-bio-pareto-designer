@@ -82,8 +82,7 @@ class BioCostFunction(ScoreFunction):
     @property
     def params(self) -> dict:
         return {
-            "Transition": self._alpha,
-            "Transversion": self._beta,
-            "Non-synonymous codon": self._w,
-            "Synonymous codon": "by codon usage",
+            "alpha": self._alpha,
+            "beta": self._beta,
+            "w": self._w,
         }

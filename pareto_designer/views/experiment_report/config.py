@@ -313,14 +313,7 @@ ExperimentConfig.report_output_path = report_output_path  # type: ignore[method-
 
 
 def _cost_params_str(config: ExperimentConfig) -> str:
-    cost_params = config.fixed["cost_params"]
-    return format_cost_params_str(
-        {
-            "Transition": float(cost_params["alpha"]),
-            "Transversion": float(cost_params["beta"]),
-            "Non-synonymous codon": float(cost_params["w"]),
-        }
-    )
+    return format_cost_params_str(config.fixed["cost_params"])
 
 
 def _fsm_info_by_ratio(

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pareto_designer.models.context import ParetoResult
+from pareto_designer.shared.seq_design_utils.run_paths import format_cost_params_str
 from pareto_designer.views.experiment_report.config import (
     ConfigError,
     alpha_comparison_groups,
@@ -96,7 +97,7 @@ def test_load_valid_config():
             effective_grid(config, name) for name in ("alpha", "k", "fsm_size")
         )
     )
-    assert n_cells == 15
+    assert n_cells == 16
     assert seq_files(config)
 
 
@@ -104,13 +105,13 @@ def test_alpha_comparison_groups():
     config = load_experiment_config(CONFIG_PATH)
     groups = dict(alpha_comparison_groups(config))
     assert groups["const_low"] == ("0.0", "0.5", "1.0")
-    assert groups["const_high"] == ("2.0", "3.0")
+    assert groups["const_high"] == ("2.0", "4.0", "8.0")
     assert groups["log_pos0.5_vs_const"] == ("0.5_log_pos", "0.5", "1.0")
     assert groups["log_pos1_vs_const"] == ("1.0_log_pos", "1.0", "2.0")
-    assert groups["log_pos2_vs_const"] == ("2.0_log_pos", "2.0", "3.0")
+    assert groups["log_pos2_vs_const"] == ("2.0_log_pos", "2.0", "4.0")
     alpha_grid = effective_grid(config, "alpha")
-    assert len(alpha_grid.sampler_alpha) == 8
-    assert "3.0" in alpha_grid.sampler_alpha
+    assert len(alpha_grid.sampler_alpha) == 9
+    assert "4.0" in alpha_grid.sampler_alpha
     assert "0.5_log_pos" in alpha_grid.sampler_alpha
 
 
@@ -140,14 +141,20 @@ def test_fsm_id_round_trip():
     assert fsm_size_from_id(fsm_id, db_fsm_size=db_size)[0] == n_states
 
 
+def test_format_cost_params_str():
+    assert (
+        format_cost_params_str({"alpha": 0.5, "beta": 1.0, "w": 500.0})
+        == "alpha0.5_beta1.0_w500.0"
+    )
+
+
 def test_parse_run_dir(tmp_path: Path):
     run_dir = (
         tmp_path
         / "seq_a"
-        / "transition_0.50"
+        / "alpha0.5_beta1.0_w500.0"
         / "MA0267.1"
         / "logexp_reduced_fsm_2048"
-        / "PowerLawSUS"
         / "k_100__alpha_1.0_log_pos"
     )
     run_dir.mkdir(parents=True)
@@ -223,10 +230,9 @@ def _kmer_run(tmp_path: Path) -> tuple[LoadedRun, ParetoResult, Path]:
     run_dir = (
         tmp_path
         / "seq"
-        / "cost"
+        / "alpha0.5_beta1.0_w500.0"
         / "MA0267.1"
         / "logexp_reduced_fsm_2048"
-        / "PowerLawSUS"
         / "k_100__alpha_1.0"
     )
     run_dir.mkdir(parents=True)
@@ -306,7 +312,7 @@ def test_expected_runs_uses_passed_fsm_contexts():
         "logexp_reduced_fsm_2048"
     }
     assert "logexp_db_fsm" in {r.params.fsm_id for r in runs if r.sweep == "fsm_size"}
-    assert all("transition_0.50" in str(r.metadata_path) for r in runs)
+    assert all("alpha0.5_beta1.0_w500.0" in str(r.metadata_path) for r in runs)
 
 
 def test_expected_runs_derives_fsm_ids_without_builder():
@@ -316,7 +322,7 @@ def test_expected_runs_derives_fsm_ids_without_builder():
         return_value=16384,
     ):
         runs = expected_runs(config)
-    assert len(runs) == 15 * len(seq_files(config))
+    assert len(runs) == 16 * len(seq_files(config))
     assert {r.params.fsm_id for r in runs if r.sweep == "fsm_size"} == {
         "logexp_db_fsm",
         "logexp_reduced_fsm_4096",

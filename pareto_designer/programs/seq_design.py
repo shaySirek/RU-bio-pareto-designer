@@ -82,13 +82,9 @@ def parse_args() -> argparse.Namespace:
         help="Specifies the exponent for the inverse Power-Law weighting of functional costs (default: 0.0, 1.0, 1.0_log_pos, 2.0_log_pos)",
     )
     parser.add_argument(
-        "--exact-match-cost",
-        action="store_true",
-        help="Use the exact match dummy cost function",
-    )
-    parser.add_argument(
         "--codon-usage",
         type=Path,
+        required=True,
         help="Codon usage file for calculating synonymous substitution costs",
     )
     parser.add_argument(
@@ -121,7 +117,6 @@ def main() -> None:
 
     score_function_builder = (
         ScoreFunctionBuilder()
-        .with_is_exact_match_cost(args.exact_match_cost)
         .with_codon_usage(args.codon_usage)
         .with_params(alpha=args.alpha, beta=args.beta, w=args.w)
     )
