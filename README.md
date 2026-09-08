@@ -65,7 +65,7 @@ poetry run run-experiment-sweeps -c configs/pareto_experiment_ma0267.yaml --dry-
 
 Add `--skip-render-per-solution` to skip per-solution HTML and heatmaps (and the target-sequence FIMO/heatmap pass) for a faster plot-only re-render of Pareto PNGs and comparison files.
 
-The full sweep runs all combinations in the YAML (42 design runs across 3 genes: 7 α × 3 genes, 3 K × 3 genes, 4 FSM sizes × 3 genes). Expect long runtimes for the complete grid.
+The full sweep runs all combinations in the YAML (54 design runs across 3 genes: 11 α × 3 genes, 3 K × 3 genes, 4 FSM sizes × 3 genes). Expect long runtimes for the complete grid.
 
 ## Data
 
@@ -132,7 +132,7 @@ See [configs/pareto_experiment_ma0267.yaml](configs/pareto_experiment_ma0267.yam
 
 - `fixed`: shared inputs (target sequences, motif, codon usage, `binding_score_space`, `hit_pval`, `cost_params` {α, β, w}, results root)
 - `sweeps.alpha` / `sweeps.k`: sampler settings; each fixes the other sampler dimension and FSM reduction, then varies `sampler_alpha` or `K`
-- `sweeps.alpha.comparison_groups`: named subsets of `sampler_alpha` values for separate alpha-sweep Pareto comparison PNGs (e.g. `const` vs `log_pos`)
+- `sweeps.alpha.comparison_groups`: named subsets of `sampler_alpha` for separate alpha-sweep Pareto PNGs (`const_low`, adjacent constant pairs such as `const_2_4`, and each `log_pos` value vs nearby constants)
 - `sweeps.fsm_size`: FSM reduction; varies `reduce_fsm_by`
 - Unknown keys are rejected (strict validation)
 
@@ -211,7 +211,7 @@ designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/<sampler_params>/
 Comparison files for one CLI invocation are written at the common parent of those run directories (never inside an individual run folder):
 
 - `pareto_frontiers.png` from `design-seq`, or sweep-specific names from `run-experiment-sweeps`:
-  - `sweep_alpha_K100_const_pareto_frontiers.png`, `sweep_alpha_K100_log_pos_pareto_frontiers.png`
+  - `sweep_alpha_K100_<group>_pareto_frontiers.png` (one PNG per `comparison_groups` entry, e.g. `const_low`, `const_2_4`, `log_pos1_vs_const`)
   - `sweep_K_alpha_1.0_log_pos_pareto_frontiers.png`
   - `sweep_fsm_K100_alpha_1.0_log_pos_pareto_frontiers.png`
 - `pareto_comparison.csv`: per-run `K`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, `k`-mer binding score MSE aggregates, and FSM reduction error
