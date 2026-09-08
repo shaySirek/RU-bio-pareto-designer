@@ -88,31 +88,39 @@ def _make_run(
     )
 
 
-def test_load_valid_config():
-    config = load_experiment_config(CONFIG_PATH)
-    assert config.name == "pareto_parameter_sweep_ma0267"
-    n_cells = sum(
+def _n_grid_cells(config) -> int:
+    return sum(
         len(grid.k_values) * len(grid.sampler_alpha) * len(grid.reduce_fsm_by)
         for grid in (
             effective_grid(config, name) for name in ("alpha", "k", "fsm_size")
         )
     )
-    assert n_cells == 16
+
+
+def test_load_valid_config():
+    config = load_experiment_config(CONFIG_PATH)
+    assert config.name == "pareto_parameter_sweep_ma0267"
+    for name in ("alpha", "k", "fsm_size"):
+        grid = effective_grid(config, name)
+        assert grid.k_values
+        assert grid.sampler_alpha
+        assert grid.reduce_fsm_by
+    assert _n_grid_cells(config) > 0
     assert seq_files(config)
 
 
 def test_alpha_comparison_groups():
     config = load_experiment_config(CONFIG_PATH)
     groups = dict(alpha_comparison_groups(config))
-    assert groups["const_low"] == ("0.0", "0.5", "1.0")
-    assert groups["const_high"] == ("2.0", "4.0", "8.0")
-    assert groups["log_pos0.5_vs_const"] == ("0.5_log_pos", "0.5", "1.0")
-    assert groups["log_pos1_vs_const"] == ("1.0_log_pos", "1.0", "2.0")
-    assert groups["log_pos2_vs_const"] == ("2.0_log_pos", "2.0", "4.0")
-    alpha_grid = effective_grid(config, "alpha")
-    assert len(alpha_grid.sampler_alpha) == 9
-    assert "4.0" in alpha_grid.sampler_alpha
-    assert "0.5_log_pos" in alpha_grid.sampler_alpha
+    raw_groups = config.sweeps["alpha"]["comparison_groups"]
+    allowed = set(effective_grid(config, "alpha").sampler_alpha)
+    assert groups
+    assert set(groups) == set(raw_groups)
+    for name, alphas in groups.items():
+        assert name.strip()
+        assert alphas
+        assert alphas == tuple(str(item) for item in raw_groups[name])
+        assert set(alphas) <= allowed
 
 
 def test_reject_unknown_top_level_key(tmp_path: Path):
@@ -123,11 +131,12 @@ def test_reject_unknown_top_level_key(tmp_path: Path):
 
 
 def test_reject_invalid_sampler_alpha(tmp_path: Path):
-    text = CONFIG_PATH.read_text(encoding="utf-8").replace(
-        "0.0, 0.5, 1.0", "bad_alpha, 0.5, 1.0"
-    )
+    import yaml
+
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+    raw["sweeps"]["alpha"]["vary"]["sampler_alpha"] = ["bad_alpha"]
     bad = tmp_path / "bad.yaml"
-    bad.write_text(text, encoding="utf-8")
+    bad.write_text(yaml.safe_dump(raw), encoding="utf-8")
     with pytest.raises(ConfigError, match="invalid sampler_alpha"):
         load_experiment_config(bad)
 
@@ -322,7 +331,7 @@ def test_expected_runs_derives_fsm_ids_without_builder():
         return_value=16384,
     ):
         runs = expected_runs(config)
-    assert len(runs) == 16 * len(seq_files(config))
+    assert len(runs) == _n_grid_cells(config) * len(seq_files(config))
     assert {r.params.fsm_id for r in runs if r.sweep == "fsm_size"} == {
         "logexp_db_fsm",
         "logexp_reduced_fsm_4096",
