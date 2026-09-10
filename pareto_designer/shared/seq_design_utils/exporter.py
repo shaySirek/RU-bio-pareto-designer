@@ -263,7 +263,6 @@ class ParetoExporter:
         binding_range: tuple[float, float],
         max_positional_cost: float,
         positional_binding_range: tuple[float, float],
-        hit_thresholds: list[float] | None = None,
         *,
         skip_render_per_solution: bool = False,
     ):
@@ -278,7 +277,6 @@ class ParetoExporter:
                     self._results,
                     max_cost,
                     binding_range,
-                    hit_thresholds,
                     is_db_fsm=self._fsm_ctx.reduce_fsm_by == 0,
                     nonsyn_w=getattr(self._score_function, "w", None),
                 ),

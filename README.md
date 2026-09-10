@@ -211,11 +211,14 @@ designer_results/<gene>/<cost_params>/<motif>/<fsm_id>/<sampler_params>/
 Comparison files for one CLI invocation are written at the common parent of those run directories (never inside an individual run folder):
 
 - `pareto_frontiers.png` from `design-seq`, or sweep-specific names from `run-experiment-sweeps`:
-  - `sweep_alpha_K100_<group>_pareto_frontiers.png` (one PNG per `comparison_groups` entry, e.g. `const_low`, `const_2_4`, `log_pos1_vs_const`)
+  - Alpha sweep (one set per `comparison_groups` entry, e.g. `const_low`, `const_2_4`, `log_pos1_vs_const`):
+    - `sweep_alpha_K100_<group>_pareto_frontiers.png` — scatter only, with a star on the first hit-free solution
+    - `sweep_alpha_K100_<group>_pareto_frontiers_lines.png` — frontier lines only
+    - `sweep_alpha_K100_<group>_pareto_frontiers_lines_anno.png` — lines with ROI-classified points
   - `sweep_K_alpha_1.0_log_pos_pareto_frontiers.png`
   - `sweep_fsm_K100_alpha_1.0_log_pos_pareto_frontiers.png`
 - `pareto_comparison.csv`: per-run `K`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, `k`-mer binding score MSE aggregates, and FSM reduction error
 
-Pareto PNG plots use **lines** with horizontal dashed gray lines at cumulative binding thresholds for 1–3 motif hits. Reduced-FSM runs show a dashed origin (de Bruijn FSM) binding line on per-run `pareto_frontier.png` and on FSM size sweep comparison plots (same color as the solid reduced-FSM line).
+Reduced-FSM runs show a dashed origin (de Bruijn FSM) binding line on per-run `pareto_frontier.png` and on FSM size sweep comparison plots (same color as the solid reduced-FSM line).
 
 All sequences from the same `design-seq` run are also collected in `designer_results/pareto_comparison.csv` (includes a `seq_id` column).

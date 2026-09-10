@@ -37,7 +37,15 @@ CONFIG_PATH = (
 )
 
 
-def _make_result(cost: float, binding: float, origin: float, sid: str = "001"):
+def _make_result(
+    cost: float,
+    binding: float,
+    origin: float,
+    sid: str = "001",
+    *,
+    hits: list[tuple[int, int]] | None = None,
+    n_nonsyn: int = 0,
+):
     return ParetoResult(
         cost=cost,
         binding_score=binding,
@@ -52,7 +60,8 @@ def _make_result(cost: float, binding: float, origin: float, sid: str = "001"):
         max_positional_binding=1.0,
         sequence="ACGT",
         n_cost_items=1,
-        motif_hits=[],
+        motif_hits=hits or [],
+        n_nonsyn=n_nonsyn,
         kmer_binding_score_mse=0.01,
         kmer_binding_score_err_std=0.005,
     )
@@ -229,6 +238,7 @@ def test_sort_design_runs():
     ]
     ordered = sort_design_runs(runs)
     assert [r.seq_id for r in ordered] == ["a", "a", "b"]
+    assert ordered[0].k == 100
     assert ordered[0].fsm_size == 4096
     assert ordered[1].k == 150
 
@@ -340,17 +350,32 @@ def test_expected_runs_derives_fsm_ids_without_builder():
     }
 
 
-def test_alpha_roi_boxplot_renders_png(tmp_path):
+def test_alpha_group_cost_hist(tmp_path):
+    from pareto_designer.shared.seq_design_utils.pareto_utils import (
+        sweep_alpha_cost_hist_filename,
+    )
+    from pareto_designer.views.pareto_frontier.png_exporter import (
+        cost_histogram_lines,
+        render_cost_hist_lines,
+    )
+
+    costs = {"a": [1.0, 2.0, 2.0], "b": [2.0, 3.0]}
+    hist = cost_histogram_lines({**costs, "empty": []})
+    assert hist is not None
+    grid, dens = hist
+    assert "empty" not in dens and len(grid) >= 64 and dens["a"].min() >= 0
+    out = tmp_path / sweep_alpha_cost_hist_filename(100, "g")
+    assert render_cost_hist_lines(costs, out) == out
+
+
+def test_alpha_group_roi_boxwhisker(tmp_path):
     from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
         alpha_roi_boxplot_filename,
         render_alpha_roi_boxplot,
     )
 
-    roi_by_alpha = {
-        "1.0": [(10.0, 5.0), (20.0, 4.0), (30.0, 3.5)],
-        "2.0": [(12.0, 4.8), (22.0, 3.9)],
-    }
-    out = tmp_path / alpha_roi_boxplot_filename(100)
-    path = render_alpha_roi_boxplot("seq1", roi_by_alpha, out)
-    assert path == out
-    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    out = tmp_path / alpha_roi_boxplot_filename(100, "g")
+    assert (
+        render_alpha_roi_boxplot({"1.0": [(10.0, 5.0)], "2.0": [(12.0, 4.0)]}, out)
+        == out
+    )

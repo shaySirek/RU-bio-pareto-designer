@@ -8,6 +8,7 @@ from openpyxl.utils import get_column_letter
 
 from pareto_designer.models.context import ParetoResult
 from pareto_designer.shared.seq_design_utils.pareto_utils import sampler_alpha_label
+from pareto_designer.shared.seq_design_utils.solution_quality import SolutionRegion
 
 
 class ReportGranularity(StrEnum):
@@ -51,6 +52,13 @@ class LoadedRun:
     metadata: dict
     solutions: list[ParetoResult]
     path: Path
+
+
+@dataclass
+class SweepDominance:
+    n_by_region: dict[str, int | None] = field(
+        default_factory=lambda: {region.value: None for region in SolutionRegion}
+    )
 
 
 @dataclass
@@ -111,6 +119,9 @@ class DesignRunSummary:
     roi_binding_max: float
     roi_binding_mean: float
     roi_binding_std: float
+    dominance_alpha: SweepDominance = field(default_factory=SweepDominance)
+    dominance_k: SweepDominance = field(default_factory=SweepDominance)
+    dominance_fsm: SweepDominance = field(default_factory=SweepDominance)
 
 
 @dataclass(frozen=True)

@@ -44,6 +44,7 @@ class RoiDistribution:
 class RegionBorders:
     first_hit_free_cost: float | None
     plateau_onset_cost: float | None
+    first_hit_free_binding: float | None = None
 
 
 def has_nonsyn_substitution(sol: ParetoResult, w: float | None = None) -> bool:
@@ -202,8 +203,11 @@ def region_borders(
         min_plateau_len=min_plateau_len,
     )
     clean = sorted((r for r in solutions if r.n_motif_hits == 0), key=lambda r: r.cost)
-    first_hit_free = clean[0].cost if clean else None
+    first_hit_free = clean[0] if clean else None
     return RegionBorders(
-        first_hit_free_cost=first_hit_free,
+        first_hit_free_cost=None if first_hit_free is None else first_hit_free.cost,
         plateau_onset_cost=counts.plateau_onset_cost,
+        first_hit_free_binding=(
+            None if first_hit_free is None else first_hit_free.binding_score
+        ),
     )

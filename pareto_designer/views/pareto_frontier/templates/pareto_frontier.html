@@ -320,8 +320,8 @@
                 {% set rx, ry = [max_x - min_x, 0.001]|max, [max_y - min_y, 0.001]|max %}
                 
                 <svg viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="xMidYMid meet">
-                    <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" class="axis-label">Functional Cost</text>
-                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" class="axis-label" transform="rotate(-90,15,{{ (h+pt-pb)/2 }})">Binding Score</text>
+                    <text x="{{ (w+pl-pr)/2 }}" y="{{ h-15 }}" text-anchor="middle" class="axis-label">Functional cost</text>
+                    <text x="25" y="{{ (h+pt-pb)/2 }}" text-anchor="middle" class="axis-label" transform="rotate(-90,15,{{ (h+pt-pb)/2 }})">Binding score</text>
                     
                     {% for i in range(6) %}
                         {% set vy, py = min_y + (i*ry/5), (h-pb) - (i*(h-pb-pt)/5) %}

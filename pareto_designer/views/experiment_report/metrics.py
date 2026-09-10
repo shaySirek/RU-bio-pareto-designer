@@ -5,6 +5,7 @@ from pareto_designer.shared.seq_design_utils.binding_metrics import (
     run_kmer_binding_score_mse_summary,
 )
 from pareto_designer.views.experiment_report.config import nonsyn_w
+from pareto_designer.views.experiment_report.dominance import attach_next_run_dominance
 from pareto_designer.views.experiment_report.models import (
     DesignRunSummary,
     ExperimentConfig,
@@ -125,18 +126,22 @@ def build_design_run_summaries(
 ) -> list[DesignRunSummary]:
     assign_sweep_memberships(runs, config)
     summaries_by_key: dict[tuple, DesignRunSummary] = {}
+    runs_by_key: dict[tuple, LoadedRun] = {}
     w = nonsyn_w(config)
 
     for run in runs:
         sweeps = getattr(run, "_sweeps", sweep_membership(run.params, config))
         key = run.params.run_key
+        runs_by_key[key] = run
         if key not in summaries_by_key:
             summaries_by_key[key] = design_run_summary(run, sweeps, w=w)
         else:
             existing = summaries_by_key[key]
             merged_sweeps = sorted(set(existing.sweeps.split(",")) | set(sweeps))
             summaries_by_key[key] = design_run_summary(run, merged_sweeps, w=w)
-    return list(summaries_by_key.values())
+    summaries = list(summaries_by_key.values())
+    attach_next_run_dominance(list(runs_by_key.values()), summaries, w=w)
+    return summaries
 
 
 def swept_param_value_from_summary(row: DesignRunSummary, sweep: str) -> float:
@@ -176,11 +181,13 @@ def filter_design_runs_by_alpha_regime(
 
 
 def sort_design_runs(runs: list[DesignRunSummary]) -> list[DesignRunSummary]:
-    return sorted(runs, key=lambda r: (r.seq_id, -r.fsm_size, -r.k))
+    return sorted(runs, key=lambda r: (r.seq_id, r.log_pos, r.alpha, r.k, r.fsm_size))
 
 
 def sort_solutions(solutions: list[SolutionRecord]) -> list[SolutionRecord]:
-    return sorted(solutions, key=lambda r: (r.seq_id, -r.fsm_size, -r.k))
+    return sorted(
+        solutions, key=lambda r: (r.seq_id, r.log_pos, r.alpha, r.k, r.fsm_size)
+    )
 
 
 SWEEP_PARAM_ATTR = {

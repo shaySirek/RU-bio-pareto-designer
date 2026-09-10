@@ -51,14 +51,3 @@ def motif_hit_window_starts(seq: str, motif: BindingMotif, pvalue: float) -> set
         for i in range(len(seq) - m_len + 1)
         if motif.is_significant_window(seq[i : i + m_len], pvalue)
     }
-
-
-def motif_hit_binding_thresholds(ctx: FSMContext, n_hits: int = 3) -> list[float]:
-    threshold = ctx.motif.hit_score_threshold(ctx.hit_pvalue)
-    space = ctx.binding_score_space
-    thresholds = [threshold]
-    acc = threshold
-    for _ in range(1, n_hits):
-        acc = space.add(acc, threshold)
-        thresholds.append(float(acc))
-    return thresholds

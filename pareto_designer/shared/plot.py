@@ -145,7 +145,7 @@ def plot_colored_state_reduction(
     ax.scatter(all_scores, all_sizes, c=all_colors_for_plot, alpha=0.7)
 
     ax.set_title("State Reduction", fontsize=14)
-    ax.set_xlabel("Approximate Binding Score")
+    ax.set_xlabel("Approximate Binding score")
     ax.set_ylabel("Size of Merged Sets")
 
     fig.tight_layout()

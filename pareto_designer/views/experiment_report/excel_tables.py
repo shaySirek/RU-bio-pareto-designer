@@ -11,11 +11,11 @@ from pareto_designer.views.experiment_report.metrics import (
     sort_solutions,
 )
 from pareto_designer.views.experiment_report.excel_schema import (
-    DESIGN_RUN_TABLE,
     OVERVIEW_CHECKLIST_TABLE,
     SOLUTION_TABLE,
     ExcelTableSpec,
     GroupedExcelTableSpec,
+    design_run_table,
 )
 from pareto_designer.views.experiment_report.models import (
     DesignRunSummary,
@@ -25,17 +25,14 @@ from pareto_designer.views.experiment_report.models import (
 )
 
 SEQ_BORDER = Border(top=Side(style="medium"))
+_HEADER_FONT = Font(bold=True)
+_HEADER_ALIGN = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 SWEEP_SHEETS = (
     ("Sweep alpha", "alpha"),
     ("Sweep K", "k"),
     ("Sweep FSM size", "fsm_size"),
 )
-
-
-def write_section_title(ws: Worksheet, row: int, title: str, *, col: int = 1) -> int:
-    ws.cell(row=row, column=col, value=title).font = Font(bold=True, size=12)
-    return row + 2
 
 
 def write_data_block(
@@ -47,13 +44,18 @@ def write_data_block(
     *,
     keys: Sequence[str] | None = None,
     seq_border: bool = False,
+    write_headers: bool = True,
 ) -> RangeRef:
     col_keys = keys if keys is not None else headers
     col_map = {key: col + idx for idx, key in enumerate(col_keys)}
     n_cols = len(headers)
-    for idx, header in enumerate(headers):
-        ws.cell(row=row, column=col + idx, value=header).font = Font(bold=True)
-    data_start = row + 1
+    if write_headers:
+        for idx, header in enumerate(headers):
+            cell = ws.cell(row=row, column=col + idx, value=header)
+            cell.font = _HEADER_FONT
+        data_start = row + 1
+    else:
+        data_start = row
     end_row = data_start - 1
     prev_seq_id: str | None = None
     for record in rows:
@@ -79,26 +81,67 @@ def _excel_cell_value(value: Any) -> Any:
     return value
 
 
-def _write_column_groups(
+def _merge_and_label(
+    ws: Worksheet,
+    title: str,
+    start_row: int,
+    start_col: int,
+    end_row: int,
+    end_col: int,
+) -> None:
+    if end_row > start_row or end_col > start_col:
+        ws.merge_cells(
+            start_row=start_row,
+            start_column=start_col,
+            end_row=end_row,
+            end_column=end_col,
+        )
+    cell = ws.cell(row=start_row, column=start_col, value=title)
+    cell.font = _HEADER_FONT
+    cell.alignment = _HEADER_ALIGN
+
+
+def _write_nested_headers(
     ws: Worksheet,
     row: int,
     col: int,
     spec: GroupedExcelTableSpec,
-) -> None:
-    col_idx = col + len(spec.leading)
+) -> int:
+    category_row = row
+    subcategory_row = row + 1
+    leaf_row = row + 2
+    col_idx = col
     for group in spec.groups:
-        start_col = col_idx
-        col_idx += len(group.columns)
-        cell = ws.cell(row=row, column=start_col, value=group.title)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center")
-        if len(group.columns) > 1:
-            ws.merge_cells(
-                start_row=row,
-                start_column=start_col,
-                end_row=row,
-                end_column=col_idx - 1,
+        leaves = group.leaf_columns()
+        n_leaves = len(leaves)
+        end_col = col_idx + n_leaves - 1
+        if group.subgroups:
+            _merge_and_label(
+                ws, group.title, category_row, col_idx, category_row, end_col
             )
+            sub_col = col_idx
+            for sub in group.subgroups:
+                sub_n = len(sub.leaf_columns())
+                _merge_and_label(
+                    ws,
+                    sub.title,
+                    subcategory_row,
+                    sub_col,
+                    subcategory_row,
+                    sub_col + sub_n - 1,
+                )
+                sub_col += sub_n
+        else:
+            _merge_and_label(
+                ws, group.title, category_row, col_idx, subcategory_row, end_col
+            )
+        col_idx += n_leaves
+
+    for idx, column in enumerate(spec.columns):
+        cell = ws.cell(row=leaf_row, column=col + idx, value=column.label)
+        cell.font = _HEADER_FONT
+        cell.alignment = _HEADER_ALIGN
+    return leaf_row
 
 
 def write_table(
@@ -109,27 +152,45 @@ def write_table(
     records: Iterable[Any],
     *,
     seq_border: bool = False,
+    freeze: bool = False,
 ) -> RangeRef:
-    header_row = row
     if isinstance(spec, GroupedExcelTableSpec):
-        _write_column_groups(ws, row, col, spec)
-        header_row = row + 1
-    return write_data_block(
+        leaf_row = _write_nested_headers(ws, row, col, spec)
+        ref = write_data_block(
+            ws,
+            leaf_row + 1,
+            col,
+            spec.headers,
+            spec.rows(records),
+            keys=spec.keys,
+            seq_border=seq_border,
+            write_headers=False,
+        )
+        if freeze:
+            freeze_header_row(ws, leaf_row)
+        return ref
+
+    ref = write_data_block(
         ws,
-        header_row,
+        row,
         col,
         spec.headers,
         spec.rows(records),
         keys=spec.keys,
         seq_border=seq_border,
     )
+    if freeze:
+        freeze_header_row(ws, row)
+    return ref
 
 
-DESIGN_RUN_HEADERS = DESIGN_RUN_TABLE.headers
+DESIGN_RUN_HEADERS = design_run_table().headers
 
 
-def design_run_row(summary: DesignRunSummary) -> list[Any]:
-    return list(DESIGN_RUN_TABLE.row(summary))
+def design_run_row(
+    summary: DesignRunSummary, *, dominance_sweep: str | None = None
+) -> list[Any]:
+    return list(design_run_table(dominance_sweep).row(summary))
 
 
 SOLUTION_HEADERS = SOLUTION_TABLE.headers
@@ -149,24 +210,16 @@ def write_overview_sheet(
     checklist: list[tuple[str, str, str, bool]],
 ) -> None:
     ws = wb.create_sheet("Overview", 0)
-    row = write_section_title(ws, 1, "Experiment overview")
-    if config:
-        ws.cell(row=row, column=1, value="Config name")
-        ws.cell(row=row, column=2, value=config.name)
-        row += 1
-        ws.cell(row=row, column=1, value="Results root")
-        ws.cell(row=row, column=2, value=config.fixed.get("results_root", ""))
-        row += 2
-    row = write_section_title(ws, row, "Expected runs checklist")
     write_table(
         ws,
-        row,
+        1,
         1,
         OVERVIEW_CHECKLIST_TABLE,
         (
             {"seq_id": s, "sweep": sw, "metadata_path": p, "exists": e}
             for s, sw, p, e in checklist
         ),
+        freeze=True,
     )
 
 
@@ -176,9 +229,10 @@ def write_summary_sheet(wb, design_runs: list[DesignRunSummary]) -> None:
         ws,
         1,
         1,
-        DESIGN_RUN_TABLE,
+        design_run_table(),
         sort_design_runs(design_runs),
         seq_border=True,
+        freeze=True,
     )
 
 
@@ -192,14 +246,14 @@ def write_sweep_sheet(
     if not runs:
         return
     ws = wb.create_sheet(sheet_title)
-    header_row = write_section_title(ws, 1, "Design runs")
     write_table(
         ws,
-        header_row,
         1,
-        DESIGN_RUN_TABLE,
+        1,
+        design_run_table(sweep),
         runs,
         seq_border=True,
+        freeze=True,
     )
 
 
@@ -217,5 +271,5 @@ def write_solutions_sheet(wb, solutions: list[SolutionRecord]) -> None:
         SOLUTION_TABLE,
         sort_solutions(solutions),
         seq_border=True,
+        freeze=True,
     )
-    freeze_header_row(ws, 1)

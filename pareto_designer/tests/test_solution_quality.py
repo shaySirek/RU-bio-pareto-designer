@@ -126,6 +126,7 @@ def test_region_borders():
     ]
     borders = region_borders(solutions, w=500.0, eps_binding=0.5, min_plateau_len=3)
     assert borders.first_hit_free_cost == 20.0
+    assert borders.first_hit_free_binding == 15.0
     assert borders.plateau_onset_cost == 80.0
 
 

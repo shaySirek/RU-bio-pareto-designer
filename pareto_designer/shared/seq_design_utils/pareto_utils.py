@@ -6,7 +6,6 @@ from loguru import logger
 
 import numpy as np
 
-from pareto_designer.shared.binding_utils import motif_hit_binding_thresholds
 from pareto_designer.models.context import ParetoResult
 from pareto_designer.shared.csv_writer import write_results_stream
 from pareto_designer.shared.seq_design_utils.binding_metrics import (
@@ -18,6 +17,8 @@ from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
 )
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.views.pareto_frontier.png_exporter import (
+    FrontierPlotStyle,
+    render_cost_hist_lines,
     render_pareto_frontiers,
 )
 
@@ -49,11 +50,23 @@ def _is_design_run_dir(path: Path) -> bool:
 
 
 def sweep_pareto_frontiers_filename(
-    sweep_name: str, grid, *, alpha_group: str | None = None
+    sweep_name: str,
+    grid,
+    *,
+    alpha_group: str | None = None,
+    plot_style: FrontierPlotStyle | None = None,
 ) -> str:
+    style_suffix = ""
+    if plot_style == FrontierPlotStyle.LINES:
+        style_suffix = "_lines"
+    elif plot_style == FrontierPlotStyle.LINES_ANNO:
+        style_suffix = "_lines_anno"
     if sweep_name == "alpha":
         suffix = f"_{alpha_group}" if alpha_group else ""
-        return f"sweep_alpha_K{grid.k_values[0]}{suffix}_pareto_frontiers.png"
+        return (
+            f"sweep_alpha_K{grid.k_values[0]}{suffix}"
+            f"_pareto_frontiers{style_suffix}.png"
+        )
     if sweep_name == "k":
         return f"sweep_K_alpha_{grid.sampler_alpha[0]}_pareto_frontiers.png"
     if sweep_name == "fsm_size":
@@ -62,6 +75,10 @@ def sweep_pareto_frontiers_filename(
             "_pareto_frontiers.png"
         )
     raise ValueError(f"Unknown sweep name: {sweep_name!r}")
+
+
+def sweep_alpha_cost_hist_filename(k: int, group_name: str) -> str:
+    return f"sweep_alpha_K{k}_{group_name}_cost_hist.png"
 
 
 def _exporter_alpha_label(exporter: ParetoExporter) -> str:
@@ -115,12 +132,12 @@ def _render_comparison_frontiers(
     comparison_png: Path,
     max_cost: float,
     binding_range: tuple[float, float],
-    hit_thresholds: list[float],
     *,
     origin_frontiers: dict[str, np.ndarray] | None = None,
     db_fsm_labels: set[str] | None = None,
     results_by_label: dict[str, list[ParetoResult]] | None = None,
     nonsyn_w: float | None = None,
+    plot_style: FrontierPlotStyle = FrontierPlotStyle.LINES_ANNO,
 ) -> None:
     labeled_origin = None
     if origin_frontiers is not None:
@@ -134,11 +151,11 @@ def _render_comparison_frontiers(
         comparison_png,
         max_cost,
         binding_range,
-        hit_thresholds,
         origin_frontiers=labeled_origin,
         db_fsm_labels=db_fsm_labels,
         results_by_label=results_by_label,
         nonsyn_w=nonsyn_w,
+        plot_style=plot_style,
     )
 
 
@@ -178,9 +195,8 @@ def render_and_compare(
         )
 
     first_exporter = list(exporters.values())[0]
-    hit_thresholds = motif_hit_binding_thresholds(first_exporter.ctx.fsm_ctx)
     if min_binding == float("inf"):
-        min_binding, max_binding = hit_thresholds[0], hit_thresholds[-1]
+        min_binding, max_binding = 0.0, 1.0
     if min_positional_binding == float("inf"):
         min_positional_binding, max_positional_binding = 0.0, 0.0
     binding_range = (min_binding, max_binding)
@@ -205,7 +221,6 @@ def render_and_compare(
             binding_range,
             max_positional_cost,
             positional_binding_range,
-            hit_thresholds,
             skip_render_per_solution=skip_render_per_solution,
         )
         if exporter._results:
@@ -247,16 +262,39 @@ def render_and_compare(
                     for label in group_frontiers
                     if label in labeled_results
                 }
-                comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
-                    sweep_name, sweep_grid, alpha_group=group_name
+                for plot_style in FrontierPlotStyle:
+                    comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
+                        sweep_name,
+                        sweep_grid,
+                        alpha_group=group_name,
+                        plot_style=plot_style,
+                    )
+                    _render_comparison_frontiers(
+                        group_frontiers,
+                        comparison_png,
+                        max_cost,
+                        binding_range,
+                        results_by_label=group_results,
+                        nonsyn_w=nonsyn_w,
+                        plot_style=plot_style,
+                    )
+                costs_by_label = {
+                    label: [sol.cost for sol in group_results.get(label, ())]
+                    for label in group_frontiers
+                }
+                render_cost_hist_lines(
+                    costs_by_label,
+                    comparison_dir
+                    / sweep_alpha_cost_hist_filename(
+                        sweep_grid.k_values[0], group_name
+                    ),
                 )
-                _render_comparison_frontiers(
-                    group_frontiers,
-                    comparison_png,
-                    max_cost,
-                    binding_range,
-                    hit_thresholds,
-                    results_by_label=group_results,
+                export_alpha_sweep_roi_boxplot(
+                    exporters,
+                    comparison_dir,
+                    k=sweep_grid.k_values[0],
+                    group_name=group_name,
+                    alpha_labels=alpha_labels,
                     nonsyn_w=nonsyn_w,
                 )
         else:
@@ -271,20 +309,11 @@ def render_and_compare(
                 comparison_png,
                 max_cost,
                 binding_range,
-                hit_thresholds,
                 origin_frontiers=origin_frontiers,
                 db_fsm_labels=db_fsm_labels,
                 results_by_label=(
                     labeled_results if sweep_name != "fsm_size" else None
                 ),
-                nonsyn_w=nonsyn_w,
-            )
-
-        if sweep_name == "alpha" and sweep_grid is not None:
-            export_alpha_sweep_roi_boxplot(
-                exporters,
-                comparison_dir,
-                k=sweep_grid.k_values[0],
                 nonsyn_w=nonsyn_w,
             )
 

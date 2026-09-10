@@ -29,6 +29,42 @@ REGION_COLORS = {
     SolutionRegion.PLATEAU: "tab:orange",
 }
 
+# Line/box colors chosen to avoid overlap with REGION_COLORS.
+FRONTIER_LINE_COLORS = [
+    "#333333",
+    "#1f77b4",
+    "#17becf",
+    "#8c564b",
+    "#7f7f7f",
+    "#005f8a",
+    "#aec7e8",
+    "#4a4a4a",
+]
+
+
+def frontier_line_color(index: int) -> str:
+    return FRONTIER_LINE_COLORS[index % len(FRONTIER_LINE_COLORS)]
+
+
+def _color_boxplot(box: dict, colors: list[str]) -> None:
+    for i, color in enumerate(colors):
+        if i < len(box["boxes"]):
+            box["boxes"][i].set_facecolor(color)
+            box["boxes"][i].set_edgecolor(color)
+            box["boxes"][i].set_alpha(0.55)
+        if i < len(box["medians"]):
+            box["medians"][i].set_color(color)
+        for key in ("whiskers", "caps"):
+            left = box[key][2 * i] if 2 * i < len(box[key]) else None
+            right = box[key][2 * i + 1] if 2 * i + 1 < len(box[key]) else None
+            for artist in (left, right):
+                if artist is not None:
+                    artist.set_color(color)
+        if i < len(box["fliers"]):
+            box["fliers"][i].set_markeredgecolor(color)
+            box["fliers"][i].set_markerfacecolor(color)
+
+
 BORDER_NO_HITS_COLOR = "#1f77b4"
 BORDER_PLATEAU_COLOR = "#8c564b"
 
@@ -64,6 +100,41 @@ def scatter_classified_points(
         )
         drawn.add(region)
     return drawn
+
+
+def mark_first_hit_free(
+    ax: Axes,
+    borders: RegionBorders,
+    *,
+    color: str,
+) -> bool:
+    if borders.first_hit_free_cost is None or borders.first_hit_free_binding is None:
+        return False
+    ax.scatter(
+        [borders.first_hit_free_cost],
+        [borders.first_hit_free_binding],
+        marker="*",
+        s=80,
+        color=color,
+        edgecolors="black",
+        linewidths=0.4,
+        zorder=4,
+    )
+    return True
+
+
+def first_hit_free_legend_handle() -> mlines.Line2D:
+    return mlines.Line2D(
+        [],
+        [],
+        marker="*",
+        linestyle="None",
+        markersize=10,
+        markeredgecolor="black",
+        markeredgewidth=0.4,
+        color="black",
+        label="first no-hit",
+    )
 
 
 def draw_region_borders(ax: Axes, borders: RegionBorders) -> None:
@@ -141,8 +212,8 @@ def overlay_run_quality(
     return region_legend_handles(drawn)
 
 
-def alpha_roi_boxplot_filename(k: int) -> str:
-    return f"sweep_alpha_K{k}_alpha_roi_boxwhisker.png"
+def alpha_roi_boxplot_filename(k: int, group_name: str) -> str:
+    return f"sweep_alpha_K{k}_{group_name}_roi_boxwhisker.png"
 
 
 def _alpha_label_sort_key(label: str) -> tuple[float, bool]:
@@ -181,21 +252,29 @@ def roi_points_by_alpha(
 
 
 def render_alpha_roi_boxplot(
-    seq_id: str,
     roi_by_alpha: dict[str, list[RoiPoint]],
     output_path: Path,
+    *,
+    alpha_order: tuple[str, ...] | None = None,
 ) -> Path | None:
     if not roi_by_alpha:
         return None
 
-    labels = sorted(roi_by_alpha, key=_alpha_label_sort_key)
+    if alpha_order is None:
+        labels = sorted(roi_by_alpha, key=_alpha_label_sort_key)
+        color_indices = list(range(len(labels)))
+    else:
+        labels = [label for label in alpha_order if roi_by_alpha.get(label)]
+        color_indices = [alpha_order.index(label) for label in labels]
+    if not labels:
+        return None
     cost_groups = [[cost for cost, _binding in roi_by_alpha[label]] for label in labels]
     binding_groups = [
         [binding for _cost, binding in roi_by_alpha[label]] for label in labels
     ]
+    colors = [frontier_line_color(idx) for idx in color_indices]
 
     fig, (ax_cost, ax_binding) = plt.subplots(1, 2, figsize=(10, 4.5), sharex=True)
-    colors = plt.cm.tab10.colors
 
     for ax, groups, ylabel in (
         (ax_cost, cost_groups, "Functional cost"),
@@ -208,14 +287,12 @@ def render_alpha_roi_boxplot(
             showfliers=True,
             widths=0.6,
         )
-        for patch, color in zip(box["boxes"], colors, strict=False):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.55)
+        _color_boxplot(box, colors)
         ax.set_ylabel(ylabel)
+        ax.set_xlabel("alpha")
         ax.tick_params(axis="x", rotation=45)
         ax.grid(axis="y", linestyle=":", alpha=0.4)
 
-    fig.suptitle(f"ROI distributions — {seq_id}", y=1.02, fontsize=11)
     fig.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,10 +306,17 @@ def export_alpha_sweep_roi_boxplot(
     comparison_dir: Path,
     *,
     k: int,
+    group_name: str,
+    alpha_labels: tuple[str, ...],
     nonsyn_w: float | None = None,
 ) -> Path | None:
     seq_id, roi_by_alpha = roi_points_by_alpha(exporters, nonsyn_w=nonsyn_w)
-    if not roi_by_alpha or seq_id is None:
+    grouped = {
+        label: roi_by_alpha[label]
+        for label in alpha_labels
+        if label in roi_by_alpha and roi_by_alpha[label]
+    }
+    if not grouped or seq_id is None:
         return None
-    output_path = comparison_dir / alpha_roi_boxplot_filename(k)
-    return render_alpha_roi_boxplot(seq_id, roi_by_alpha, output_path)
+    output_path = comparison_dir / alpha_roi_boxplot_filename(k, group_name)
+    return render_alpha_roi_boxplot(grouped, output_path, alpha_order=alpha_labels)
