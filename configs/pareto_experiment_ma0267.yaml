@@ -30,10 +30,10 @@ sweeps:
       log_pos2_vs_const: [2.0_log_pos, 2.0, 4.0]
       log_pos2_vs_const_high: [2.0_log_pos, 8.0]
   k:
-    fixed: { reduce_fsm_by: 0.875, sampler_alpha: 1.0_log_pos }
+    fixed: { reduce_fsm_by: 0.875, sampler_alpha: 4.0 }
     vary:
       k: [50, 100, 150]
   fsm_size:
-    fixed: { k: 100, sampler_alpha: 1.0_log_pos }
+    fixed: { k: 100, sampler_alpha: 4.0 }
     vary:
       reduce_fsm_by: [0, 0.75, 0.875, 0.9375]

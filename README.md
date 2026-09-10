@@ -215,8 +215,8 @@ Comparison files for one CLI invocation are written at the common parent of thos
     - `sweep_alpha_K100_<group>_pareto_frontiers.png` — scatter only, with a star on the first hit-free solution
     - `sweep_alpha_K100_<group>_pareto_frontiers_lines.png` — frontier lines only
     - `sweep_alpha_K100_<group>_pareto_frontiers_lines_anno.png` — lines with ROI-classified points
-  - `sweep_K_alpha_1.0_log_pos_pareto_frontiers.png`
-  - `sweep_fsm_K100_alpha_1.0_log_pos_pareto_frontiers.png`
+  - `sweep_K_alpha_4.0_pareto_frontiers.png`
+  - `sweep_fsm_K100_alpha_4.0_pareto_frontiers.png`
 - `pareto_comparison.csv`: per-run `K`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, `k`-mer binding score MSE aggregates, and FSM reduction error
 
 Reduced-FSM runs show a dashed origin (de Bruijn FSM) binding line on per-run `pareto_frontier.png` and on FSM size sweep comparison plots (same color as the solid reduced-FSM line).
