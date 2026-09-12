@@ -142,7 +142,7 @@ Written to `{results_root}/pareto_experiment_report.xlsx` with six sheets: **Ove
 
 **Summary** lists all design runs (sorted by `seq_id`, `fsm_size` descending, `K` descending).
 
-Each sweep sheet lists that sweep's design runs (same sort order).
+Each sweep sheet lists that sweep's design runs (same sort order). Sweep sheets also add next-run dominance: for each quality region and for all solutions, how many of this run's points the next run in the chain dominates (`n_dom_by_next`), and the distribution of functional-cost and binding-score gains versus the closest dominating partner (`func_cost_gain_*`, `binding_gain_*`). Summary omits those columns.
 
 Binding approximation error (reduced vs origin FSM scores), using the design score space (`logexp`: squared error of `exp(score)`):
 
@@ -215,8 +215,16 @@ Comparison files for one CLI invocation are written at the common parent of thos
     - `sweep_alpha_K100_<group>_pareto_frontiers.png` — scatter only, with a star on the first hit-free solution
     - `sweep_alpha_K100_<group>_pareto_frontiers_lines.png` — frontier lines only
     - `sweep_alpha_K100_<group>_pareto_frontiers_lines_anno.png` — lines with ROI-classified points
-  - `sweep_K_alpha_4.0_pareto_frontiers.png`
-  - `sweep_fsm_K100_alpha_4.0_pareto_frontiers.png`
+    - `sweep_alpha_K100_<group>_roi_boxwhisker.png` — ROI cost and binding box-whisker by alpha
+    - `sweep_alpha_K100_<group>_roi_violin.png` — ROI 2D density in cost–binding space, one series per alpha
+  - K sweep:
+    - `sweep_K_alpha_4.0_pareto_frontiers.png` — scatter only, with a star on the first hit-free solution
+    - `sweep_K_alpha_4.0_pareto_frontiers_lines.png` — frontier lines only
+    - `sweep_K_alpha_4.0_pareto_frontiers_lines_anno.png` — lines with ROI-classified points
+    - `sweep_K_alpha_4.0_roi_boxwhisker.png` — ROI cost and binding box-whisker by K
+    - `sweep_K_alpha_4.0_roi_violin.png` — ROI 2D density in cost–binding space, one series per K
+  - FSM size sweep (single plot; no style or ROI variants):
+    - `sweep_fsm_K100_alpha_4.0_pareto_frontiers.png` — frontier lines, with a dashed origin (de Bruijn) line on reduced-FSM series
 - `pareto_comparison.csv`: per-run `K`, `alpha`, `log_pos`, `fsm_size`, `reduce_fsm_by`, `k`-mer binding score MSE aggregates, and FSM reduction error
 
 Reduced-FSM runs show a dashed origin (de Bruijn FSM) binding line on per-run `pareto_frontier.png` and on FSM size sweep comparison plots (same color as the solid reduced-FSM line).

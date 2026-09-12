@@ -8,7 +8,10 @@ from openpyxl.utils import get_column_letter
 
 from pareto_designer.models.context import ParetoResult
 from pareto_designer.shared.seq_design_utils.pareto_utils import sampler_alpha_label
-from pareto_designer.shared.seq_design_utils.solution_quality import SolutionRegion
+from pareto_designer.shared.seq_design_utils.solution_quality import (
+    RoiDistribution,
+    SolutionRegion,
+)
 
 
 class ReportGranularity(StrEnum):
@@ -54,11 +57,26 @@ class LoadedRun:
     path: Path
 
 
+def _empty_region_counts() -> dict[str, int | None]:
+    return {region.value: None for region in SolutionRegion}
+
+
+def _empty_region_dists() -> dict[str, RoiDistribution]:
+    return {region.value: RoiDistribution.empty() for region in SolutionRegion}
+
+
 @dataclass
 class SweepDominance:
-    n_by_region: dict[str, int | None] = field(
-        default_factory=lambda: {region.value: None for region in SolutionRegion}
+    n_by_region: dict[str, int | None] = field(default_factory=_empty_region_counts)
+    n_global: int | None = None
+    func_cost_gain_by_region: dict[str, RoiDistribution] = field(
+        default_factory=_empty_region_dists
     )
+    binding_gain_by_region: dict[str, RoiDistribution] = field(
+        default_factory=_empty_region_dists
+    )
+    func_cost_gain: RoiDistribution = field(default_factory=RoiDistribution.empty)
+    binding_gain: RoiDistribution = field(default_factory=RoiDistribution.empty)
 
 
 @dataclass

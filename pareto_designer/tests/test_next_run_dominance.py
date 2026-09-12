@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
+import numpy as np
+
 from pareto_designer.models.context import ParetoResult
+from pareto_designer.shared.seq_design_utils.solution_quality import RoiDistribution
 from pareto_designer.views.experiment_report.dominance import (
     attach_next_run_dominance,
     n_dominated_by,
@@ -83,6 +87,24 @@ def test_min_min_dominance():
     assert n_dominated_by([_sol("a", 10, 8), _sol("b", 20, 3)], [_sol("c", 9, 8)]) == 1
 
 
+def _assert_empty_dist(dist: RoiDistribution) -> None:
+    assert all(
+        math.isnan(getattr(dist, stat))
+        for stat in ("min", "p25", "p50", "p75", "max", "mean", "std")
+    )
+
+
+def _assert_dist(dist: RoiDistribution, values: list[float]) -> None:
+    arr = np.asarray(values, dtype=float)
+    assert dist.min == float(np.min(arr))
+    assert dist.p25 == float(np.percentile(arr, 25))
+    assert dist.p50 == float(np.percentile(arr, 50))
+    assert dist.p75 == float(np.percentile(arr, 75))
+    assert dist.max == float(np.max(arr))
+    assert dist.mean == float(np.mean(arr))
+    assert dist.std == float(np.std(arr))
+
+
 def test_region_counts_and_missing_next():
     a = _run(
         "s",
@@ -92,7 +114,66 @@ def test_region_counts_and_missing_next():
     b = _run("s", alpha=2.0, solutions=[_sol("n", 9, 19)], sweeps=["alpha"])
     stats = sweep_dominance(a, b, w=500.0)
     assert stats.n_by_region == {"hits": 1, "nonsyn": 0, "roi": 0, "plateau": 0}
-    assert sweep_dominance(a, None).n_by_region["hits"] is None
+    assert stats.n_global == 1
+    _assert_dist(stats.func_cost_gain_by_region["hits"], [1.0])
+    _assert_dist(stats.binding_gain_by_region["hits"], [1.0])
+    _assert_dist(stats.func_cost_gain, [1.0])
+    _assert_dist(stats.binding_gain, [1.0])
+    _assert_empty_dist(stats.func_cost_gain_by_region["roi"])
+    _assert_empty_dist(stats.binding_gain_by_region["nonsyn"])
+
+    missing = sweep_dominance(a, None)
+    assert missing.n_by_region["hits"] is None
+    assert missing.n_global is None
+    _assert_empty_dist(missing.func_cost_gain)
+    _assert_empty_dist(missing.binding_gain)
+    _assert_empty_dist(missing.func_cost_gain_by_region["hits"])
+
+
+def test_tightest_partner_gains():
+    a = _run(
+        "s",
+        solutions=[_sol("p", 10, 8, hits=[(1, 7)])],
+        sweeps=["alpha"],
+    )
+    b = _run(
+        "s",
+        alpha=2.0,
+        solutions=[_sol("near", 9, 8), _sol("far", 1, 1)],
+        sweeps=["alpha"],
+    )
+    stats = sweep_dominance(a, b, w=500.0)
+    assert stats.n_by_region["hits"] == 1
+    assert stats.n_global == 1
+    _assert_dist(stats.func_cost_gain, [1.0])
+    _assert_dist(stats.binding_gain, [0.0])
+    _assert_dist(stats.func_cost_gain_by_region["hits"], [1.0])
+    _assert_dist(stats.binding_gain_by_region["hits"], [0.0])
+
+
+def test_global_gains_cover_all_regions():
+    a = _run(
+        "s",
+        solutions=[_sol("h", 10, 20, hits=[(1, 7)]), _sol("r", 20, 5)],
+        sweeps=["alpha"],
+    )
+    b = _run(
+        "s",
+        alpha=2.0,
+        solutions=[_sol("qh", 9, 19), _sol("qr", 18, 4)],
+        sweeps=["alpha"],
+    )
+    stats = sweep_dominance(a, b, w=500.0)
+    assert stats.n_by_region == {"hits": 1, "nonsyn": 0, "roi": 1, "plateau": 0}
+    assert stats.n_global == 2
+    _assert_dist(stats.func_cost_gain_by_region["hits"], [1.0])
+    _assert_dist(stats.binding_gain_by_region["hits"], [1.0])
+    _assert_dist(stats.func_cost_gain_by_region["roi"], [2.0])
+    _assert_dist(stats.binding_gain_by_region["roi"], [1.0])
+    _assert_dist(stats.func_cost_gain, [1.0, 2.0])
+    _assert_dist(stats.binding_gain, [1.0, 1.0])
+    _assert_empty_dist(stats.func_cost_gain_by_region["plateau"])
+    _assert_empty_dist(stats.binding_gain_by_region["nonsyn"])
 
 
 def test_next_run_chains():
@@ -139,7 +220,14 @@ def test_excel_columns_sort_and_headers(tmp_path: Path):
     summary_spec = design_run_table()
     alpha_spec = design_run_table("alpha")
     assert "n_dom_by_next" not in summary_spec.headers
+    assert "func_cost_gain_mean" not in summary_spec.headers
+    assert "binding_gain_mean" not in summary_spec.headers
     assert "n_dom_by_next" in alpha_spec.headers
+    assert "func_cost_gain_mean" in alpha_spec.headers
+    assert "binding_gain_mean" in alpha_spec.headers
+    quality = next(g for g in alpha_spec.groups if g.title == "Solution quality")
+    assert [sg.title for sg in quality.subgroups][-1] == "all"
+    assert any(k.endswith(".n_global") for k in alpha_spec.keys)
     assert all(not k.startswith("dominance_k.") for k in alpha_spec.keys)
     sampling = summary_spec.groups[1]
     assert [g.title for g in sampling.subgroups] == ["low-cost preference", "k"]
@@ -184,4 +272,8 @@ def test_excel_columns_sort_and_headers(tmp_path: Path):
     )
     summary_leaf = next(wb["Summary"].iter_rows(min_row=3, max_row=3, values_only=True))
     assert "n_dom_by_next" in sweep_leaf
+    assert "func_cost_gain_mean" in sweep_leaf
+    assert "binding_gain_mean" in sweep_leaf
     assert "n_dom_by_next" not in summary_leaf
+    assert "func_cost_gain_mean" not in summary_leaf
+    assert "binding_gain_mean" not in summary_leaf

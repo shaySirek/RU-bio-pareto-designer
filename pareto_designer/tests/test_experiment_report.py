@@ -368,14 +368,114 @@ def test_alpha_group_cost_hist(tmp_path):
     assert render_cost_hist_lines(costs, out) == out
 
 
+def test_k_sweep_frontier_filenames():
+    from types import SimpleNamespace
+
+    from pareto_designer.shared.seq_design_utils.pareto_utils import (
+        sweep_pareto_frontiers_filename,
+    )
+    from pareto_designer.views.pareto_frontier.png_exporter import FrontierPlotStyle
+
+    grid = SimpleNamespace(sampler_alpha=["4.0"], k_values=[100])
+    assert (
+        sweep_pareto_frontiers_filename("k", grid)
+        == "sweep_K_alpha_4.0_pareto_frontiers.png"
+    )
+    assert (
+        sweep_pareto_frontiers_filename("k", grid, plot_style=FrontierPlotStyle.POINTS)
+        == "sweep_K_alpha_4.0_pareto_frontiers.png"
+    )
+    assert (
+        sweep_pareto_frontiers_filename("k", grid, plot_style=FrontierPlotStyle.LINES)
+        == "sweep_K_alpha_4.0_pareto_frontiers_lines.png"
+    )
+    assert (
+        sweep_pareto_frontiers_filename(
+            "k", grid, plot_style=FrontierPlotStyle.LINES_ANNO
+        )
+        == "sweep_K_alpha_4.0_pareto_frontiers_lines_anno.png"
+    )
+
+
 def test_alpha_group_roi_boxwhisker(tmp_path):
     from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
         alpha_roi_boxplot_filename,
-        render_alpha_roi_boxplot,
+        render_roi_boxplot,
     )
 
     out = tmp_path / alpha_roi_boxplot_filename(100, "g")
+    assert out.name == "sweep_alpha_K100_g_roi_boxwhisker.png"
     assert (
-        render_alpha_roi_boxplot({"1.0": [(10.0, 5.0)], "2.0": [(12.0, 4.0)]}, out)
+        render_roi_boxplot(
+            {"1.0": [(10.0, 5.0)], "2.0": [(12.0, 4.0)]},
+            out,
+            xlabel="alpha",
+        )
+        == out
+    )
+
+
+def test_alpha_group_roi_violin(tmp_path):
+    from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+        _roi_series_legend_label,
+        alpha_roi_violin_filename,
+        render_roi_violin,
+    )
+
+    out = tmp_path / alpha_roi_violin_filename(100, "g")
+    assert out.name == "sweep_alpha_K100_g_roi_violin.png"
+    assert _roi_series_legend_label("1.0", "α") == "α=1.0"
+    assert (
+        render_roi_violin(
+            {
+                "1.0": [(10.0, 5.0), (11.0, 4.5), (12.0, 4.0)],
+                "2.0": [(12.0, 4.0), (13.0, 3.5), (14.0, 3.0)],
+            },
+            out,
+            series_prefix="α",
+        )
+        == out
+    )
+
+
+def test_k_sweep_roi_boxwhisker(tmp_path):
+    from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+        k_roi_boxplot_filename,
+        render_roi_boxplot,
+    )
+
+    out = tmp_path / k_roi_boxplot_filename("4.0")
+    assert out.name == "sweep_K_alpha_4.0_roi_boxwhisker.png"
+    assert (
+        render_roi_boxplot(
+            {"50": [(10.0, 5.0)], "100": [(12.0, 4.0)]},
+            out,
+            label_order=("50", "100", "150"),
+            xlabel="K",
+        )
+        == out
+    )
+
+
+def test_k_sweep_roi_violin(tmp_path):
+    from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
+        _roi_series_legend_label,
+        k_roi_violin_filename,
+        render_roi_violin,
+    )
+
+    out = tmp_path / k_roi_violin_filename("4.0")
+    assert out.name == "sweep_K_alpha_4.0_roi_violin.png"
+    assert _roi_series_legend_label("50", "K") == "K=50"
+    assert (
+        render_roi_violin(
+            {
+                "50": [(10.0, 5.0), (11.0, 4.8), (12.0, 4.5)],
+                "100": [(12.0, 4.0), (13.0, 3.8), (14.0, 3.5)],
+            },
+            out,
+            label_order=("50", "100", "150"),
+            series_prefix="K",
+        )
         == out
     )

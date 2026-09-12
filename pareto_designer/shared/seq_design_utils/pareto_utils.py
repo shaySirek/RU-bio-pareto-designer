@@ -14,6 +14,7 @@ from pareto_designer.shared.seq_design_utils.binding_metrics import (
 from pareto_designer.shared.seq_design_utils.exporter import ParetoExporter
 from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
     export_alpha_sweep_roi_boxplot,
+    export_k_sweep_roi_boxplot,
 )
 from pareto_designer.algorithms.seq_design.sampling import SamplingMethod
 from pareto_designer.views.pareto_frontier.png_exporter import (
@@ -68,7 +69,10 @@ def sweep_pareto_frontiers_filename(
             f"_pareto_frontiers{style_suffix}.png"
         )
     if sweep_name == "k":
-        return f"sweep_K_alpha_{grid.sampler_alpha[0]}_pareto_frontiers.png"
+        return (
+            f"sweep_K_alpha_{grid.sampler_alpha[0]}"
+            f"_pareto_frontiers{style_suffix}.png"
+        )
     if sweep_name == "fsm_size":
         return (
             f"sweep_fsm_K{grid.k_values[0]}_alpha_{grid.sampler_alpha[0]}"
@@ -157,6 +161,40 @@ def _render_comparison_frontiers(
         nonsyn_w=nonsyn_w,
         plot_style=plot_style,
     )
+
+
+def _render_comparison_frontier_styles(
+    labeled_frontiers: dict[str, np.ndarray],
+    comparison_dir: Path,
+    sweep_name: str,
+    sweep_grid,
+    max_cost: float,
+    binding_range: tuple[float, float],
+    *,
+    alpha_group: str | None = None,
+    origin_frontiers: dict[str, np.ndarray] | None = None,
+    db_fsm_labels: set[str] | None = None,
+    results_by_label: dict[str, list[ParetoResult]] | None = None,
+    nonsyn_w: float | None = None,
+) -> None:
+    for plot_style in FrontierPlotStyle:
+        comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
+            sweep_name,
+            sweep_grid,
+            alpha_group=alpha_group,
+            plot_style=plot_style,
+        )
+        _render_comparison_frontiers(
+            labeled_frontiers,
+            comparison_png,
+            max_cost,
+            binding_range,
+            origin_frontiers=origin_frontiers,
+            db_fsm_labels=db_fsm_labels,
+            results_by_label=results_by_label,
+            nonsyn_w=nonsyn_w,
+            plot_style=plot_style,
+        )
 
 
 def render_and_compare(
@@ -262,22 +300,17 @@ def render_and_compare(
                     for label in group_frontiers
                     if label in labeled_results
                 }
-                for plot_style in FrontierPlotStyle:
-                    comparison_png = comparison_dir / sweep_pareto_frontiers_filename(
-                        sweep_name,
-                        sweep_grid,
-                        alpha_group=group_name,
-                        plot_style=plot_style,
-                    )
-                    _render_comparison_frontiers(
-                        group_frontiers,
-                        comparison_png,
-                        max_cost,
-                        binding_range,
-                        results_by_label=group_results,
-                        nonsyn_w=nonsyn_w,
-                        plot_style=plot_style,
-                    )
+                _render_comparison_frontier_styles(
+                    group_frontiers,
+                    comparison_dir,
+                    sweep_name,
+                    sweep_grid,
+                    max_cost,
+                    binding_range,
+                    alpha_group=group_name,
+                    results_by_label=group_results,
+                    nonsyn_w=nonsyn_w,
+                )
                 costs_by_label = {
                     label: [sol.cost for sol in group_results.get(label, ())]
                     for label in group_frontiers
@@ -297,6 +330,24 @@ def render_and_compare(
                     alpha_labels=alpha_labels,
                     nonsyn_w=nonsyn_w,
                 )
+        elif sweep_name == "k" and sweep_grid is not None:
+            _render_comparison_frontier_styles(
+                labeled_frontiers,
+                comparison_dir,
+                sweep_name,
+                sweep_grid,
+                max_cost,
+                binding_range,
+                results_by_label=labeled_results,
+                nonsyn_w=nonsyn_w,
+            )
+            export_k_sweep_roi_boxplot(
+                exporters,
+                comparison_dir,
+                alpha=sweep_grid.sampler_alpha[0],
+                k_values=sweep_grid.k_values,
+                nonsyn_w=nonsyn_w,
+            )
         else:
             if sweep_name is not None and sweep_grid is not None:
                 comparison_png = comparison_dir / sweep_pareto_frontiers_filename(

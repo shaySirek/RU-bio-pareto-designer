@@ -15,7 +15,6 @@ from pareto_designer.shared.seq_design_utils.solution_quality import (
     region_borders,
 )
 from pareto_designer.shared.seq_design_utils.solution_quality.plots import (
-    first_hit_free_legend_handle,
     frontier_line_color,
     mark_first_hit_free,
     overlay_run_quality,
@@ -160,7 +159,6 @@ def render_pareto_frontiers(
     plotted_costs: list[float] = []
     plotted_bindings: list[float] = []
     regions_in_legend: set[SolutionRegion] = set()
-    drew_first_hit_free = False
     draw_lines = plot_style != FrontierPlotStyle.POINTS
     draw_classified = plot_style == FrontierPlotStyle.LINES_ANNO
     draw_unclassified = plot_style == FrontierPlotStyle.POINTS
@@ -198,7 +196,6 @@ def render_pareto_frontiers(
                 hit_free_cost = borders.first_hit_free_cost
                 hit_free_binding = borders.first_hit_free_binding
                 if mark_first_hit_free(ax, borders, color=color):
-                    drew_first_hit_free = True
                     if hit_free_cost is not None and hit_free_binding is not None:
                         plotted_costs.append(hit_free_cost)
                         plotted_bindings.append(hit_free_binding)
@@ -236,8 +233,6 @@ def render_pareto_frontiers(
             legend_handles = _frontier_point_legend_handles(
                 plotted_frontiers, line_colors
             )
-            if drew_first_hit_free:
-                legend_handles.append(first_hit_free_legend_handle())
         else:
             legend_handles = _frontier_legend_handles(plotted_frontiers, line_colors)
             legend_handles.extend(
@@ -452,42 +447,85 @@ def _get_cmaps(
     }
 
 
+def kmer_binding_score_mse_values(results: list[ParetoResult]) -> list[float]:
+    return [
+        r.kmer_binding_score_mse
+        for r in results
+        if np.isfinite(r.kmer_binding_score_mse)
+    ]
+
+
+def kmer_mse_histogram_series(
+    values_by_label: dict[str, list[float] | np.ndarray],
+) -> dict[str, np.ndarray]:
+    return {
+        label: np.asarray(values, dtype=float)
+        for label, values in values_by_label.items()
+        if len(values) > 0
+    }
+
+
+def shared_hist_bins(series: dict[str, np.ndarray]) -> np.ndarray:
+    all_values = np.concatenate(list(series.values()))
+    n_bins = min(50, max(5, min(len(values) for values in series.values())))
+    return np.histogram_bin_edges(all_values, bins=n_bins)
+
+
+def draw_labeled_histograms(
+    ax: Axes,
+    series: dict[str, np.ndarray],
+    bins: np.ndarray,
+) -> None:
+    for idx, (label, values) in enumerate(series.items()):
+        ax.hist(
+            values,
+            bins=bins,
+            color=_frontier_line_color(idx),
+            alpha=0.7,
+            **({"label": label} if label else {}),
+        )
+
+
+def render_kmer_binding_score_mse_histograms(
+    values_by_label: dict[str, list[float] | np.ndarray],
+    output_file: Path,
+    *,
+    vlines: list[tuple[float, str, str]] | None = None,
+) -> Path | None:
+    series = kmer_mse_histogram_series(values_by_label)
+    if not series:
+        return None
+    fig, ax = plt.subplots(figsize=(5, 4))
+    draw_labeled_histograms(ax, series, shared_hist_bins(series))
+    for value, linestyle, label in vlines or ():
+        ax.axvline(value, linestyle=linestyle, color="black", linewidth=1, label=label)
+    ax.set_xlabel("per-solution binding score MSE")
+    ax.set_ylabel("frequency")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_file
+
+
 def render_kmer_binding_score_mse_histogram(
     ctx: RunContext,
     results: list[ParetoResult],
     fsm_mse: float | None = None,
 ):
-    values = [
-        r.kmer_binding_score_mse
-        for r in results
-        if np.isfinite(r.kmer_binding_score_mse)
-    ]
+    values = kmer_binding_score_mse_values(results)
     if not values:
         return
-
-    fig, ax = plt.subplots(figsize=(5, 4))
-    ax.hist(values, bins=min(50, max(5, len(values))), color="steelblue", alpha=0.8)
     mean = float(np.mean(values))
-    ax.axvline(
-        mean, linestyle="-", color="black", linewidth=1, label=f"mean={mean:.4g}"
-    )
+    extra: list[tuple[float, str, str]] = [
+        (mean, "-", "mean per-solution MSE"),
+    ]
     if fsm_mse is not None and np.isfinite(fsm_mse):
-        ax.axvline(
-            fsm_mse,
-            linestyle="--",
-            color="black",
-            linewidth=1,
-            label=f"FSM MSE={fsm_mse:.4g}",
-        )
-    ax.set_xlabel("K-mer binding score MSE (per solution)")
-    ax.set_ylabel("Frequency")
-    ax.legend()
-    fig.savefig(
+        extra.append((fsm_mse, "--", "FSM MSE"))
+    render_kmer_binding_score_mse_histograms(
+        {"": values},
         ctx.output_path / "kmer_binding_score_mse_histogram.png",
-        dpi=300,
-        bbox_inches="tight",
+        vlines=extra,
     )
-    plt.close(fig)
 
 
 def render_scatter_binding_scores(

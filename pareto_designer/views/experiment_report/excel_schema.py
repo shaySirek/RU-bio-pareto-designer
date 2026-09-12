@@ -122,6 +122,20 @@ def _roi_subgroup(prefix: str, title: str) -> ExcelColumnGroup:
     )
 
 
+def _gain_columns(attr: str, dist_path: str) -> list[ExcelColumn]:
+    columns: list[ExcelColumn] = []
+    for prefix, field in (
+        ("func_cost_gain", "func_cost_gain"),
+        ("binding_gain", "binding_gain"),
+    ):
+        path = field if dist_path == "" else f"{field}_by_region.{dist_path}"
+        columns.extend(
+            ExcelColumn(f"{attr}.{path}.{stat}", f"{prefix}_{stat}")
+            for stat in _ROI_STATS
+        )
+    return columns
+
+
 def _quality_subgroups(
     dominance_sweep: str | None,
 ) -> tuple[ExcelColumnGroup, ...]:
@@ -133,7 +147,19 @@ def _quality_subgroups(
             columns.append(
                 ExcelColumn(f"{attr}.n_by_region.{region.value}", "n_dom_by_next")
             )
+            columns.extend(_gain_columns(attr, region.value))
         groups.append(ExcelColumnGroup(title, columns=tuple(columns)))
+    if attr:
+        groups.append(
+            ExcelColumnGroup(
+                "all",
+                columns=(
+                    ExcelColumn("n_solutions", "n"),
+                    ExcelColumn(f"{attr}.n_global", "n_dom_by_next"),
+                    *_gain_columns(attr, ""),
+                ),
+            )
+        )
     return tuple(groups)
 
 
